@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Play, Users, Clock, ChevronDown, List, Camera } from "lucide-react"
+import { Play, Users, Clock, ChevronDown, List, Video } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import Link from "next/link"
@@ -73,7 +73,7 @@ export default function HomePage() {
           </div>
           <div className="text-center">
             <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Camera className="h-8 w-8 text-primary" />
+              <Video className="h-8 w-8 text-primary" />
             </div>
             <h3 className="text-xl font-semibold mb-2">Video Conference</h3>
             <p className="text-muted-foreground">Créez videoconferences dans un salon pour discuter avec les autres</p>
