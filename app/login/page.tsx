@@ -2,6 +2,7 @@
 
 import type React from "react"
 
+import Image from "next/image"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -22,11 +23,17 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8">
-        <Link href="/" className="flex items-center justify-center gap-2 mb-8">
-          <div className="bg-primary text-primary-foreground p-2 rounded-lg">
-            <Play className="h-6 w-6" />
+        <Link href="/" className="flex items-center justify-center gap-2 mb-2">
+          <div className="p-2 rounded-lg">
+          <Image
+              src="/logo.png"
+              alt="WatchFlix Logo"
+              width={40}
+              height={40}
+              className="h-25 w-25"
+            />
           </div>
-          <span className="text-2xl font-bold">WatchFlix</span>
+          
         </Link>
 
         <div className="mb-8 text-center">
