@@ -45,7 +45,7 @@ export default function RegisterPage() {
           <div className="bg-primary text-primary-foreground p-2 rounded-lg">
             <Play className="h-6 w-6" />
           </div>
-          <span className="text-2xl font-bold">WatchTogether</span>
+          <span className="text-2xl font-bold">Watchflix</span>
         </Link>
 
         <div className="mb-8 text-center">
@@ -100,20 +100,6 @@ export default function RegisterPage() {
               onChange={(e) => updateField("confirmPassword", e.target.value)}
               required
             />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="terms"
-              checked={formData.acceptTerms}
-              onCheckedChange={(checked) => updateField("acceptTerms", checked === true)}
-            />
-            <Label htmlFor="terms" className="text-sm font-normal cursor-pointer">
-              J'accepte les{" "}
-              <Link href="/terms" className="text-primary hover:underline">
-                conditions d'utilisation
-              </Link>
-            </Label>
           </div>
 
           <Button type="submit" className="w-full" size="lg">

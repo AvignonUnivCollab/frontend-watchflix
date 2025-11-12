@@ -16,7 +16,6 @@ export default function LoginPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: Implement login logic
     console.log("Login:", { email, password })
   }
 
@@ -27,7 +26,7 @@ export default function LoginPage() {
           <div className="bg-primary text-primary-foreground p-2 rounded-lg">
             <Play className="h-6 w-6" />
           </div>
-          <span className="text-2xl font-bold">WatchTogether</span>
+          <span className="text-2xl font-bold">WatchFlix</span>
         </Link>
 
         <div className="mb-8 text-center">
