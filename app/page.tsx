@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { Play, Users, Clock, ChevronDown, List, Video, Plus } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
 
 // Mock data pour les salons
@@ -139,6 +142,52 @@ const mockRooms = [
 export default function HomePage() {
   const [selectedRoom, setSelectedRoom] = useState<(typeof mockRooms)[0] | null>(null)
   const [authDialogOpen, setAuthDialogOpen] = useState(true)
+  const [createRoomOpen, setCreateRoomOpen] = useState(false)
+  const [newRoom, setNewRoom] = useState({
+    name: "",
+    thumbnail: null as File | null,
+    description: "",
+  })
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+
+  const handleCreateRoom = () => {
+    console.log("Creating room:", newRoom)
+    setCreateRoomOpen(false)
+    setNewRoom({
+      name: "",
+      thumbnail: null,
+      description: "",
+    })
+    setImagePreview(null)
+  }
+
+  const handleCloseCreateRoom = (open: boolean) => {
+    setCreateRoomOpen(open)
+    if (!open) {
+      // Reset form when closing
+      setNewRoom({
+        name: "",
+        thumbnail: null,
+        description: "",
+      })
+      setImagePreview(null)
+    }
+  }
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null
+    setNewRoom({ ...newRoom, thumbnail: file })
+
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    } else {
+      setImagePreview(null)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -153,7 +202,7 @@ export default function HomePage() {
             collaboratives
           </p>
           <div className="flex gap-4 justify-center mt-8">
-            <Button size="lg" className="text-lg">
+            <Button size="lg" className="text-lg" onClick={() => setCreateRoomOpen(true)}>
               <Plus className="mr-2 h-5 w-5" />
               Créer un salon
             </Button>
@@ -372,6 +421,67 @@ export default function HomePage() {
               <Button className="flex-1">Rejoindre le salon</Button>
               <Button variant="outline" className="flex-1 bg-transparent">
                 Voir la playlist complète
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rooms creation section */}
+      <Dialog open={createRoomOpen} onOpenChange={handleCloseCreateRoom}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Créer un nouveau salon</DialogTitle>
+            <DialogDescription>
+              Remplissez les informations pour créer votre salon de visionnage collaboratif
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="thumbnail">Image de couverture</Label>
+              <Input id="thumbnail" type="file" accept="image/*" onChange={handleImageChange} />
+              {imagePreview && (
+                <div className="mt-2">
+                  <img
+                    src={imagePreview || "/placeholder.svg"}
+                    alt="Aperçu"
+                    className="w-full h-48 object-cover rounded-lg border"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="name">Nom du salon *</Label>
+              <Input
+                id="name"
+                placeholder="Ex: Soirée Cinéma 🎬"
+                value={newRoom.name}
+                onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Description *</Label>
+              <Textarea
+                id="description"
+                placeholder="Décrivez votre salon et ce que vous allez regarder..."
+                value={newRoom.description}
+                onChange={(e) => setNewRoom({ ...newRoom, description: e.target.value })}
+                rows={4}
+                required
+              />
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button onClick={handleCreateRoom} className="flex-1" disabled={!newRoom.name || !newRoom.description}>
+                <Plus className="mr-2 h-4 w-4" />
+                Créer le salon
+              </Button>
+              <Button variant="outline" onClick={() => handleCloseCreateRoom(false)} className="flex-1 bg-transparent">
+                Annuler
               </Button>
             </div>
           </div>
