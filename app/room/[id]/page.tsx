@@ -89,7 +89,7 @@ const availableVideos = [
     id: 7,
     title: "Shutter Island",
     description:
-      "Un marshal enquête sur la disparition d'une meurtrière quiffffffffffffffffffffffffffffffffffffffffffffffffffff s'est échappée d'un hôpital psychiatrique pour criminels aliénés.",
+      "Un marshal enquête sur la disparition d'une meurtrière qui s'est échappée d'un hôpital psychiatrique pour criminels aliénés.",
     thumbnail: "/shutter-island-movie-poster.jpg",
     url: "https://www.youtube.com/embed/5iaYLCiq5RM",
     duration: "2:18:00",
@@ -107,6 +107,12 @@ interface Message {
 interface Participant {
   id: string
   name: string
+  stream?: MediaStream
+}
+
+interface PeerConnection {
+  id: string
+  connection: RTCPeerConnection
   stream?: MediaStream
 }
 
@@ -136,6 +142,9 @@ export default function RoomPage() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
   const localVideoRef = useRef<HTMLVideoElement>(null)
+  const [peerConnections, setPeerConnections] = useState<Map<string, RTCPeerConnection>>(new Map())
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map())
+  const myPeerId = useRef(`peer-${Math.random().toString(36).substr(2, 9)}`)
 
   const isInPlaylist = (videoId: number) => {
     return playlist.some((v) => v.id === videoId)
@@ -249,6 +258,53 @@ export default function RoomPage() {
     alert("Lien du salon copié dans le presse-papiers!")
   }
 
+  const createPeerConnection = (peerId: string): RTCPeerConnection => {
+    const configuration: RTCConfiguration = {
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
+    }
+
+    const pc = new RTCPeerConnection(configuration)
+
+    // Add local stream tracks to peer connection
+    if (localStream) {
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream)
+      })
+    }
+
+    // Handle incoming remote stream
+    pc.ontrack = (event) => {
+      console.log("[v0] Received remote track from", peerId)
+      const stream = event.streams[0]
+      setRemoteStreams((prev) => {
+        const newMap = new Map(prev)
+        newMap.set(peerId, stream)
+        return newMap
+      })
+    }
+
+    // Handle ICE candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log("[v0] Sending ICE candidate to", peerId)
+        const signaling = {
+          type: "ice-candidate",
+          from: myPeerId.current,
+          to: peerId,
+          candidate: event.candidate,
+          roomId: roomId,
+        }
+        localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(signaling))
+      }
+    }
+
+    pc.onconnectionstatechange = () => {
+      console.log("[v0] Connection state with", peerId, ":", pc.connectionState)
+    }
+
+    return pc
+  }
+
   const startLocalStream = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -260,15 +316,16 @@ export default function RoomPage() {
         localVideoRef.current.srcObject = stream
       }
 
-      localStorage.setItem(
-        `room_${roomId}_participant_local`,
-        JSON.stringify({
-          id: "local",
-          name: "Vous",
-          hasVideo: isVideoEnabled,
-          hasAudio: isAudioEnabled,
-        }),
-      )
+      // Announce presence in room
+      const announcement = {
+        type: "join",
+        peerId: myPeerId.current,
+        roomId: roomId,
+        name: "Utilisateur",
+      }
+      localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(announcement))
+
+      console.log("[v0] Started local stream, announced presence:", myPeerId.current)
     } catch (error) {
       console.error("[v0] Error accessing media devices:", error)
       alert("Impossible d'accéder à la caméra/microphone. Vérifiez les permissions.")
@@ -276,6 +333,11 @@ export default function RoomPage() {
   }
 
   const stopLocalStream = () => {
+    // Close all peer connections
+    peerConnections.forEach((pc) => pc.close())
+    setPeerConnections(new Map())
+    setRemoteStreams(new Map())
+
     if (localStream) {
       localStream.getTracks().forEach((track) => track.stop())
       setLocalStream(null)
@@ -283,8 +345,131 @@ export default function RoomPage() {
         localVideoRef.current.srcObject = null
       }
     }
-    localStorage.removeItem(`room_${roomId}_participant_local`)
+
+    // Announce leaving
+    const announcement = {
+      type: "leave",
+      peerId: myPeerId.current,
+      roomId: roomId,
+    }
+    localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(announcement))
+
+    console.log("[v0] Stopped local stream and left room")
   }
+
+  const createOffer = async (peerId: string) => {
+    const pc = createPeerConnection(peerId)
+    setPeerConnections((prev) => new Map(prev).set(peerId, pc))
+
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+
+    const signaling = {
+      type: "offer",
+      from: myPeerId.current,
+      to: peerId,
+      offer: offer,
+      roomId: roomId,
+    }
+    localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(signaling))
+    console.log("[v0] Sent offer to", peerId)
+  }
+
+  const handleOffer = async (from: string, offer: RTCSessionDescriptionInit) => {
+    console.log("[v0] Received offer from", from)
+    const pc = createPeerConnection(from)
+    setPeerConnections((prev) => new Map(prev).set(from, pc))
+
+    await pc.setRemoteDescription(new RTCSessionDescription(offer))
+    const answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+
+    const signaling = {
+      type: "answer",
+      from: myPeerId.current,
+      to: from,
+      answer: answer,
+      roomId: roomId,
+    }
+    localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(signaling))
+    console.log("[v0] Sent answer to", from)
+  }
+
+  const handleAnswer = async (from: string, answer: RTCSessionDescriptionInit) => {
+    console.log("[v0] Received answer from", from)
+    const pc = peerConnections.get(from)
+    if (pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(answer))
+    }
+  }
+
+  const handleIceCandidate = async (from: string, candidate: RTCIceCandidateInit) => {
+    console.log("[v0] Received ICE candidate from", from)
+    const pc = peerConnections.get(from)
+    if (pc) {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate))
+    }
+  }
+
+  // Listen for signaling messages via localStorage
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key?.startsWith("webrtc_signal_") && e.newValue) {
+        const signal = JSON.parse(e.newValue)
+
+        // Only process signals for this room
+        if (signal.roomId !== roomId) return
+
+        // Don't process own signals
+        if (signal.from === myPeerId.current) return
+
+        switch (signal.type) {
+          case "join":
+            if (signal.peerId !== myPeerId.current && localStream) {
+              console.log("[v0] New peer joined:", signal.peerId)
+              // Create offer to new peer
+              createOffer(signal.peerId)
+            }
+            break
+          case "offer":
+            if (signal.to === myPeerId.current) {
+              handleOffer(signal.from, signal.offer)
+            }
+            break
+          case "answer":
+            if (signal.to === myPeerId.current) {
+              handleAnswer(signal.from, signal.answer)
+            }
+            break
+          case "ice-candidate":
+            if (signal.to === myPeerId.current) {
+              handleIceCandidate(signal.from, signal.candidate)
+            }
+            break
+          case "leave":
+            console.log("[v0] Peer left:", signal.peerId)
+            const pc = peerConnections.get(signal.peerId)
+            if (pc) {
+              pc.close()
+              setPeerConnections((prev) => {
+                const newMap = new Map(prev)
+                newMap.delete(signal.peerId)
+                return newMap
+              })
+              setRemoteStreams((prev) => {
+                const newMap = new Map(prev)
+                newMap.delete(signal.peerId)
+                return newMap
+              })
+            }
+            break
+        }
+      }
+    }
+
+    window.addEventListener("storage", handleStorageChange)
+    return () => window.removeEventListener("storage", handleStorageChange)
+  }, [roomId, localStream, peerConnections])
 
   const toggleVideo = async () => {
     if (isVideoEnabled) {
@@ -318,28 +503,28 @@ export default function RoomPage() {
     }
   }, [isVideoEnabled, isAudioEnabled])
 
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key?.startsWith(`room_${roomId}_participant_`) && e.key !== `room_${roomId}_participant_local`) {
-        const participantData = e.newValue ? JSON.parse(e.newValue) : null
-        if (participantData) {
-          setParticipants((prev) => {
-            const existing = prev.find((p) => p.id === participantData.id)
-            if (!existing) {
-              return [
-                ...prev,
-                {
-                  id: participantData.id,
-                  name: participantData.name,
-                },
-              ]
-            }
-            return prev
-          })
-        }
+  const handleStorageChange = (e: StorageEvent) => {
+    if (e.key?.startsWith(`room_${roomId}_participant_`) && e.key !== `room_${roomId}_participant_local`) {
+      const participantData = e.newValue ? JSON.parse(e.newValue) : null
+      if (participantData) {
+        setParticipants((prev) => {
+          const existing = prev.find((p) => p.id === participantData.id)
+          if (!existing) {
+            return [
+              ...prev,
+              {
+                id: participantData.id,
+                name: participantData.name,
+              },
+            ]
+          }
+          return prev
+        })
       }
     }
+  }
 
+  useEffect(() => {
     window.addEventListener("storage", handleStorageChange)
     return () => window.removeEventListener("storage", handleStorageChange)
   }, [roomId])
@@ -381,9 +566,9 @@ export default function RoomPage() {
       </header>
 
       <main className="container mx-auto p-4">
-        <div className="grid lg:grid-cols-[1fr_400px] gap-4">
-          {/* Left Column - Video Player + Available Videos */}
-          <div className="space-y-4">
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Left Column - Video Player and Available Videos */}
+          <div className="lg:col-span-2 space-y-6">
             {/* Main Video Player */}
             <div>
               <div className="relative">
@@ -488,7 +673,7 @@ export default function RoomPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 max-h-[400px] overflow-y-auto">
                 <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
                   <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
                   {!isVideoEnabled && (
@@ -499,14 +684,17 @@ export default function RoomPage() {
                   <span className="absolute bottom-2 left-2 text-xs bg-black/50 px-2 py-1 rounded">Vous</span>
                 </div>
 
-                {participants.map((participant) => (
-                  <div key={participant.id} className="relative aspect-video bg-muted rounded-lg">
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <User className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <span className="absolute bottom-2 left-2 text-xs bg-black/50 px-2 py-1 rounded">
-                      {participant.name}
-                    </span>
+                {Array.from(remoteStreams.entries()).map(([peerId, stream]) => (
+                  <div key={peerId} className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+                    <video
+                      autoPlay
+                      playsInline
+                      ref={(video) => {
+                        if (video) video.srcObject = stream
+                      }}
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute bottom-2 left-2 text-xs bg-black/50 px-2 py-1 rounded">Participant</span>
                   </div>
                 ))}
               </div>
