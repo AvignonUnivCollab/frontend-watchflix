@@ -89,7 +89,7 @@ const availableVideos = [
     id: 7,
     title: "Shutter Island",
     description:
-      "Un marshal enquête sur la disparition d'une meurtrière qui s'est échappée d'un hôpital psychiatrique pour criminels aliénés.",
+      "Un marshal enquête sur la disparition d'une meurtrière quiffffffffffffffffffffffffffffffffffffffffffffffffffff s'est échappée d'un hôpital psychiatrique pour criminels aliénés.",
     thumbnail: "/shutter-island-movie-poster.jpg",
     url: "https://www.youtube.com/embed/5iaYLCiq5RM",
     duration: "2:18:00",
