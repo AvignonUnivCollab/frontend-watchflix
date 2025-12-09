@@ -9,14 +9,23 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
+import { useRouter } from "next/navigation"  // ⭐ IMPORTANT
 import { Play } from "lucide-react"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const router = useRouter()  // ⭐ OBLIGATOIRE
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Simuler la connexion
+    localStorage.setItem("isLoggedIn", "true")
+
+    // Redirection
+    router.push("/")
+
     console.log("Login:", { email, password })
   }
 
@@ -25,7 +34,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md p-8">
         <Link href="/" className="flex items-center justify-center gap-2 mb-2">
           <div className="p-2 rounded-lg">
-          <Image
+            <Image
               src="/logo.png"
               alt="WatchFlix Logo"
               width={40}
@@ -33,7 +42,6 @@ export default function LoginPage() {
               className="h-25 w-25"
             />
           </div>
-          
         </Link>
 
         <div className="mb-8 text-center">
