@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import Image from "next/image"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -9,36 +7,40 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
-import { Play } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const router = useRouter()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    console.log("Login:", { email, password })
+
+    localStorage.setItem("isLoggedIn", "true")
+    router.push("/")
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8">
+
         <Link href="/" className="flex items-center justify-center gap-2 mb-2">
           <div className="p-2 rounded-lg">
-          <Image
+            <Image
               src="/logo.png"
               alt="WatchFlix Logo"
               width={40}
               height={40}
-              className="h-25 w-25"
             />
           </div>
-          
         </Link>
 
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold mb-2">Bon retour !</h1>
-          <p className="text-muted-foreground">Connectez-vous pour rejoindre vos salons</p>
+          <p className="text-muted-foreground">
+            Connectez-vous pour rejoindre vos salons
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -61,6 +63,7 @@ export default function LoginPage() {
                 Mot de passe oublié ?
               </Link>
             </div>
+
             <Input
               id="password"
               type="password"
@@ -88,6 +91,7 @@ export default function LoginPage() {
             ← Retour à l'accueil
           </Link>
         </div>
+
       </Card>
     </div>
   )
