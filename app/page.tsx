@@ -1,16 +1,22 @@
 "use client"
 
-import { useState } from "react"
+import type React from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Play, Users, Clock, ChevronDown, List, Video, Plus } from "lucide-react"
+import { Play, Users, Clock, ChevronDown, List, Plus } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
+import { authApi } from "@/lib/api/auth.api"
+import { authStorage } from "@/lib/storage/auth.storage"
+import { roomApi } from "@/lib/api/room.api"
+import { mapRoomToUI } from "@/lib/mappers/room.mapper"
+import { RoomUI } from "@/lib/models/room.ui"
 
 // Mock data pour les salons
 const mockRooms = [
@@ -139,9 +145,10 @@ const mockRooms = [
   },
 ]
 
+
 export default function HomePage() {
   const [selectedRoom, setSelectedRoom] = useState<(typeof mockRooms)[0] | null>(null)
-  const [authDialogOpen, setAuthDialogOpen] = useState(true)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [createRoomOpen, setCreateRoomOpen] = useState(false)
   const [newRoom, setNewRoom] = useState({
     name: "",
@@ -149,22 +156,74 @@ export default function HomePage() {
     description: "",
   })
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [rooms, setRooms] = useState(mockRooms)
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleCreateRoom = () => {
-    console.log("Creating room:", newRoom)
-    setCreateRoomOpen(false)
-    setNewRoom({
-      name: "",
-      thumbnail: null,
-      description: "",
-    })
-    setImagePreview(null)
+  useEffect(() => {
+    const user = authStorage.get()
+    if (!user) {
+      setAuthDialogOpen(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadRooms()
+  }, [])
+
+
+  const loadRooms = async () => {
+    setIsLoading(true)
+    try {
+      const fetchedRooms = await roomApi.getAll()
+      console.log("Rooms loaded from API:", fetchedRooms)
+      const uiRooms = fetchedRooms.map(mapRoomToUI)
+      setRooms(uiRooms)
+    } catch (error) {
+      setRooms(mockRooms)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCreateRoom = async () => {
+    if (!newRoom.name || !newRoom.description) {
+      alert("Veuillez remplir tous les champs obligatoires")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const createdRoom = await roomApi.create({
+        name: newRoom.name,
+        thumbnail: newRoom.thumbnail,
+        description: newRoom.description,
+        creatorId: 1, // TODO: Remplacer par l'ID de l'utilisateur connecté
+      })
+
+      console.log("[v0] Room created successfully:", createdRoom)
+
+      await loadRooms()
+
+      setCreateRoomOpen(false)
+      setNewRoom({
+        name: "",
+        thumbnail: null,
+        description: "",
+      })
+      setImagePreview(null)
+
+      alert("Salon créé avec succès !")
+    } catch (error) {
+      console.error("[v0] Error creating room:", error)
+      alert("Erreur lors de la création du salon. Vérifiez que votre API est démarrée.")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleCloseCreateRoom = (open: boolean) => {
     setCreateRoomOpen(open)
     if (!open) {
-      // Reset form when closing
       setNewRoom({
         name: "",
         thumbnail: null,
@@ -190,10 +249,10 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <Navigation />
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 flex-grow">
         {/* Hero Section */}
         <div className="mb-12 text-center">
           <h1 className="text-5xl font-bold mb-4 text-balance">Regardez ensemble, où que vous soyez</h1>
@@ -217,7 +276,7 @@ export default function HomePage() {
         <div className="mb-8">
           <h2 className="text-3xl font-bold mb-6">Salons populaires</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {mockRooms.map((room) => (
+            {rooms.map((room) => (
               <Card key={room.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                 <div className="relative">
                   <img
@@ -263,7 +322,7 @@ export default function HomePage() {
         </div>
 
         {/* Features Section */}
-        <div className="mt-16 grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="text-center">
             <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <Play className="h-8 w-8 text-primary" />
@@ -286,13 +345,6 @@ export default function HomePage() {
             </div>
             <h3 className="text-xl font-semibold mb-2">Playlist collaborative</h3>
             <p className="text-muted-foreground">Créez ensemble la playlist parfaite pour votre soirée</p>
-          </div>
-          <div className="text-center">
-            <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Video className="h-8 w-8 text-primary" />
-            </div>
-            <h3 className="text-xl font-semibold mb-2">Video Conference</h3>
-            <p className="text-muted-foreground">Créez videoconferences dans un salon pour discuter avec les autres</p>
           </div>
         </div>
       </main>
@@ -339,8 +391,7 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
-       {/* Rooms detail section */}
-       <Dialog open={!!selectedRoom} onOpenChange={(open) => !open && setSelectedRoom(null)}>
+      <Dialog open={!!selectedRoom} onOpenChange={(open) => !open && setSelectedRoom(null)}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl">{selectedRoom?.name}</DialogTitle>
@@ -427,7 +478,6 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Rooms creation section */}
       <Dialog open={createRoomOpen} onOpenChange={handleCloseCreateRoom}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -487,6 +537,14 @@ export default function HomePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {isLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-background p-6 rounded-lg">
+            <p className="text-lg">Chargement...</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
