@@ -9,31 +9,41 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
+import { authApi } from "@/lib/api/auth.api"
+import { authStorage } from "@/lib/storage/auth.storage"
 import { Play } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const router = useRouter()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log("Login:", { email, password })
+    setLoading(true)
+    setError("")
+
+    try {
+      const response = await authApi.login({ email, password })
+      authStorage.save(response.user)
+      router.push("/")
+    } catch (err) {
+      console.error("Login error:", err)
+      setError("Email ou mot de passe incorrect")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8">
-        <Link href="/" className="flex items-center justify-center gap-2 mb-2">
-          <div className="p-2 rounded-lg">
-          <Image
-              src="/logo.png"
-              alt="WatchFlix Logo"
-              width={40}
-              height={40}
-              className="h-25 w-25"
-            />
-          </div>
-          
+        <Link href="/" className="flex items-center justify-center gap-2 mb-8">
+          <Image src="/logo.png" alt="WatchFlix" width={40} height={40} className="object-contain" />
+          <span className="text-2xl font-bold">WatchFlix</span>
         </Link>
 
         <div className="mb-8 text-center">
@@ -57,7 +67,7 @@ export default function LoginPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Mot de passe</Label>
-              <Link href="/account" className="text-sm text-primary hover:underline">
+              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
                 Mot de passe oublié ?
               </Link>
             </div>
@@ -71,8 +81,10 @@ export default function LoginPage() {
             />
           </div>
 
-          <Button type="submit" className="w-full" size="lg">
-            Se connecter
+          {error && <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg text-sm">{error}</div>}
+
+          <Button type="submit" className="w-full" size="lg" disabled={loading}>
+            {loading ? "Connexion en cours..." : "Se connecter"}
           </Button>
         </form>
 
