@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import Image from "next/image"
+
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -9,29 +9,55 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import Link from "next/link"
-import { Play } from "lucide-react"
+import Image from "next/image"
+import { authApi } from "@/lib/api/auth.api"
+import { authStorage } from "@/lib/storage/auth.storage"
+import { useRouter } from "next/navigation"
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
-    username: "",
+    nom: "",
+    prenom: "",
     email: "",
     password: "",
     confirmPassword: "",
     acceptTerms: false,
   })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const router = useRouter()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: Implement registration logic
+    setError("")
+
     if (formData.password !== formData.confirmPassword) {
-      alert("Les mots de passe ne correspondent pas")
+      setError("Les mots de passe ne correspondent pas")
       return
     }
     if (!formData.acceptTerms) {
-      alert("Vous devez accepter les conditions d'utilisation")
+      setError("Vous devez accepter les conditions d'utilisation")
       return
     }
-    console.log("Register:", formData)
+
+    setLoading(true)
+
+    try {
+      const response = await authApi.register({
+        nom: formData.nom,
+        prenom: formData.prenom,
+        email: formData.email,
+        password: formData.password,
+        role: "USER",
+      })
+      authStorage.save(response.user)
+      router.push("/")
+    } catch (err) {
+      console.error("Registration error:", err)
+      setError("Erreur lors de la création du compte. Veuillez réessayer.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const updateField = (field: string, value: string | boolean) => {
@@ -41,17 +67,9 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8">
-        <Link href="/" className="flex items-center justify-center gap-2 mb-2">
-          <div className="p-2 rounded-lg">
-          <Image
-              src="/logo.png"
-              alt="WatchFlix Logo"
-              width={40}
-              height={40}
-              className="h-25 w-25"
-            />
-          </div>
-          
+        <Link href="/" className="flex items-center justify-center gap-2 mb-8">
+          <Image src="/logo.png" alt="WatchFlix" width={40} height={40} className="object-contain" />
+          <span className="text-2xl font-bold">WatchFlix</span>
         </Link>
 
         <div className="mb-8 text-center">
@@ -60,14 +78,28 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {error && <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg text-sm">{error}</div>}
+
           <div className="space-y-2">
-            <Label htmlFor="username">Nom d'utilisateur</Label>
+            <Label htmlFor="nom">Nom</Label>
             <Input
-              id="username"
+              id="nom"
               type="text"
-              placeholder="johndoe"
-              value={formData.username}
-              onChange={(e) => updateField("username", e.target.value)}
+              placeholder="Doe"
+              value={formData.nom}
+              onChange={(e) => updateField("nom", e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="prenom">Prénom</Label>
+            <Input
+              id="prenom"
+              type="text"
+              placeholder="John"
+              value={formData.prenom}
+              onChange={(e) => updateField("prenom", e.target.value)}
               required
             />
           </div>
@@ -108,8 +140,22 @@ export default function RegisterPage() {
             />
           </div>
 
-          <Button type="submit" className="w-full" size="lg">
-            Créer mon compte
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="terms"
+              checked={formData.acceptTerms}
+              onCheckedChange={(checked) => updateField("acceptTerms", checked === true)}
+            />
+            <Label htmlFor="terms" className="text-sm font-normal cursor-pointer">
+              J'accepte les{" "}
+              <Link href="/terms" className="text-primary hover:underline">
+                conditions d'utilisation
+              </Link>
+            </Label>
+          </div>
+
+          <Button type="submit" className="w-full" size="lg" disabled={loading}>
+            {loading ? "Création en cours..." : "Créer mon compte"}
           </Button>
         </form>
 
