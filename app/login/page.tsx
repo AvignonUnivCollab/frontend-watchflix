@@ -30,7 +30,7 @@ export default function LoginPage() {
       console.log("API URL =", process.env.NEXT_PUBLIC_API_URL)
 
       const response = await authApi.login({ email, password })
-      //console.error("Server response:", response)
+      console.error("Server response:", response)
       authStorage.save(response)
       //console.error("local save:", authStorage.get())
       router.push("/")

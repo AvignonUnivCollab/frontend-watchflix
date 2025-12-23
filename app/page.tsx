@@ -5,7 +5,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Play, Users, Clock, ChevronDown, List, Plus } from "lucide-react"
+import { Play, Users, Clock, ChevronDown, List, Plus,  Video, Package } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -204,13 +204,13 @@ export default function HomePage() {
       alert("Veuillez remplir tous les champs, image incluse")
       return
     }
-  
+
     setIsLoading(true)
     try {
       const createdRoom = await roomApi.create({
         name: newRoom.name,
         description: newRoom.description,
-        creatorId: 1,
+        creatorId: user.id,
         thumbnail: newRoom.thumbnail,
       })
   
@@ -287,6 +287,24 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/*AUCUN SALON */}
+        {!hasError && !isLoading && rooms.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="bg-primary/10 p-6 rounded-full mb-6">
+              <Package className="h-10 w-10 text-primary" />
+            </div>
+
+            <h3 className="text-2xl font-semibold mb-2">
+              Aucun salon pour le moment
+            </h3>
+
+            <p className="text-muted-foreground max-w-md mb-6">
+              Il n’y a encore aucun salon disponible.
+              Soyez le premier à en créer un et invitez vos amis !
+            </p>
+          </div>
+        )}
+
         {/* Rooms Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold mb-6">Salons populaires</h2>
@@ -307,7 +325,7 @@ export default function HomePage() {
               </div>
             )}
 
-          {!hasError && !isLoading && (
+          {!hasError && !isLoading && rooms.length >= 0 &&(
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                {rooms.map((room) => (
                  <Card key={room.id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -357,7 +375,7 @@ export default function HomePage() {
         </div>
 
         {/* Features Section */}
-        <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="mt-16 grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="text-center">
             <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <Play className="h-8 w-8 text-primary" />
@@ -380,6 +398,13 @@ export default function HomePage() {
             </div>
             <h3 className="text-xl font-semibold mb-2">Playlist collaborative</h3>
             <p className="text-muted-foreground">Créez ensemble la playlist parfaite pour votre soirée</p>
+          </div>
+          <div className="text-center">
+            <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Video className="h-8 w-8 text-primary" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">Video Conference</h3>
+            <p className="text-muted-foreground">Créez videoconferences dans un salon pour discuter avec les autres</p>
           </div>
         </div>
       </main>
