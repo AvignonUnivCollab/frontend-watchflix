@@ -27,12 +27,17 @@ export default function LoginPage() {
     setError("")
 
     try {
+      console.log("API URL =", process.env.NEXT_PUBLIC_API_URL)
+
       const response = await authApi.login({ email, password })
-      authStorage.save(response.user)
+      //console.error("Server response:", response)
+      authStorage.save(response)
+      //console.error("local save:", authStorage.get())
       router.push("/")
-    } catch (err) {
+    } catch (err: any) {
       console.error("Login error:", err)
       setError("Email ou mot de passe incorrect")
+      //setError(err.message)
     } finally {
       setLoading(false)
     }

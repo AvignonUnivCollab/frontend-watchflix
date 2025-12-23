@@ -14,8 +14,21 @@ import {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       })
-  
-      if (!res.ok) throw new Error(res.status.toString())
+    
+      if (!res.ok) {
+        let message = "Erreur inconnue"
+    
+        try {
+          const error = await res.json()
+          message = error.message ?? message
+        } catch {
+          const text = await res.text()
+          if (text) message = text
+        }
+    
+        throw new Error(message)
+      }
+    
       return res.json()
     },
   
@@ -26,7 +39,20 @@ import {
         body: JSON.stringify(data),
       })
   
-      if (!res.ok) throw new Error(res.status.toString())
+      if (!res.ok) {
+        let message = "Erreur inconnue"
+    
+        try {
+          const error = await res.json()
+          message = error.message ?? message
+        } catch {
+          const text = await res.text()
+          if (text) message = text
+        }
+    
+        throw new Error(message)
+      }
+    
       return res.json()
     },
   }

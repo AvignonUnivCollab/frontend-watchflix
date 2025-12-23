@@ -1,19 +1,28 @@
-import { User } from "../models/auth"
+import { User, AuthResponse } from "../models/auth"
 
 const KEY = "watchflix_user"
 
 export const authStorage = {
-  save(user: User) {
+  save(user: AuthResponse) {
     if (typeof window !== "undefined") {
       localStorage.setItem(KEY, JSON.stringify(user))
     }
   },
 
-  get(): User | null {
+  get(): AuthResponse | null {
     if (typeof window === "undefined") return null
+  
     const data = localStorage.getItem(KEY)
-    return data ? JSON.parse(data) : null
-  },
+    if (!data || data === "undefined") return null
+  
+    try {
+      return JSON.parse(data)
+    } catch {
+      localStorage.removeItem(KEY)
+      return null
+    }
+  }
+  ,
 
   clear() {
     if (typeof window !== "undefined") {

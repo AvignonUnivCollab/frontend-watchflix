@@ -50,7 +50,7 @@ export default function RegisterPage() {
         password: formData.password,
         role: "USER",
       })
-      authStorage.save(response.user)
+      authStorage.save(response)
       router.push("/")
     } catch (err) {
       console.error("Registration error:", err)

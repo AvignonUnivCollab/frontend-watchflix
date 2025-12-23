@@ -19,8 +19,11 @@ export interface User {
     password: string
   }
   
-  export interface AuthResponse {
-    user: User
-    token?: string
+  export type AuthResponse = {
+    message: string
+    email: string
+    nom: string
+    prenom: string
+    role: string
   }
   
