@@ -3,13 +3,19 @@ import { Room, CreateRoomRequest } from "../models/room"
 
 export const roomApi = {
   getAll: async (): Promise<Room[]> => {
-    const res = await fetch(`${API_BASE_URL}/rooms`)
+    const res = await fetch(`${API_BASE_URL}/rooms`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    })
     if (!res.ok) throw new Error(res.toString())
     return res.json()
   },
 
   getById: async (id: number): Promise<Room> => {
-    const res = await fetch(`${API_BASE_URL}/rooms/${id}`)
+    const res = await fetch(`${API_BASE_URL}/rooms/${id}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    })
     if (!res.ok) throw new Error(res.status.toString())
     return res.json()
   },
@@ -34,6 +40,7 @@ export const roomApi = {
   
     const res = await fetch(`${API_BASE_URL}/rooms`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: formData,
     })
   
