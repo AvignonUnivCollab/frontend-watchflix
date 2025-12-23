@@ -5,7 +5,7 @@ export interface Room {
     currentVideoId?: number | null
     members?: number
     duration?: number
-    creatorId: number
+    creator: string
     description: string
     createdAt?: string
   }

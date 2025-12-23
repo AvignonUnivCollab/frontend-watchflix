@@ -156,12 +156,17 @@ export default function HomePage() {
     description: "",
   })
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [rooms, setRooms] = useState(mockRooms)
+  const [rooms, setRooms] = useState<RoomUI[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [user, setUser] = useState<any | null>(null)
+  const [hasError, setHasError] = useState(false)
+
 
   useEffect(() => {
-    const user = authStorage.get()
-    if (!user) {
+    const storedUser = authStorage.get()
+    setUser(storedUser)
+
+    if (!storedUser) {
       setAuthDialogOpen(true)
     }
   }, [])
@@ -173,53 +178,57 @@ export default function HomePage() {
 
   const loadRooms = async () => {
     setIsLoading(true)
+    setHasError(false)
+  
     try {
+      // délai UX de 3 secondes
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+  
       const fetchedRooms = await roomApi.getAll()
       console.log("Rooms loaded from API:", fetchedRooms)
-      const uiRooms = fetchedRooms.map(mapRoomToUI)
+  
+      const uiRooms: RoomUI[] = fetchedRooms.map(mapRoomToUI)
       setRooms(uiRooms)
     } catch (error) {
-      setRooms(mockRooms)
+      console.error("Erreur serveur :", error)
+      setHasError(true)
+      setRooms([]) 
     } finally {
       setIsLoading(false)
     }
   }
+  
 
   const handleCreateRoom = async () => {
-    if (!newRoom.name || !newRoom.description) {
-      alert("Veuillez remplir tous les champs obligatoires")
+    if (!newRoom.name || !newRoom.description || !newRoom.thumbnail || !user) {
+      alert("Veuillez remplir tous les champs, image incluse")
       return
     }
-
+  
     setIsLoading(true)
     try {
       const createdRoom = await roomApi.create({
         name: newRoom.name,
-        thumbnail: newRoom.thumbnail,
         description: newRoom.description,
-        creatorId: 1, // TODO: Remplacer par l'ID de l'utilisateur connecté
+        creatorId: 1,
+        thumbnail: newRoom.thumbnail,
       })
-
-      console.log("[v0] Room created successfully:", createdRoom)
-
+  
+      console.log("Room created:", createdRoom)
+  
       await loadRooms()
-
+  
       setCreateRoomOpen(false)
-      setNewRoom({
-        name: "",
-        thumbnail: null,
-        description: "",
-      })
+      setNewRoom({ name: "", thumbnail: null, description: "" })
       setImagePreview(null)
-
-      alert("Salon créé avec succès !")
-    } catch (error) {
-      console.error("[v0] Error creating room:", error)
-      alert("Erreur lors de la création du salon. Vérifiez que votre API est démarrée.")
+    } catch (err) {
+      console.error(err)
+      alert("Erreur lors de la création du salon")
     } finally {
       setIsLoading(false)
     }
   }
+  
 
   const handleCloseCreateRoom = (open: boolean) => {
     setCreateRoomOpen(open)
@@ -261,7 +270,13 @@ export default function HomePage() {
             collaboratives
           </p>
           <div className="flex gap-4 justify-center mt-8">
-            <Button size="lg" className="text-lg" onClick={() => setCreateRoomOpen(true)}>
+            <Button size="lg" className="text-lg"   onClick={() => {
+              if (!user) {
+                setAuthDialogOpen(true)
+                return
+              }
+              setCreateRoomOpen(true)
+            }}>
               <Plus className="mr-2 h-5 w-5" />
               Créer un salon
             </Button>
@@ -275,50 +290,70 @@ export default function HomePage() {
         {/* Rooms Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold mb-6">Salons populaires</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {rooms.map((room) => (
-              <Card key={room.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                <div className="relative">
-                  <img
-                    src={room.thumbnail || "/placeholder.svg"}
-                    alt={room.name}
-                    className="w-full h-48 object-cover"
-                  />
-                  <Badge className="absolute top-3 right-3 bg-primary text-white">
-                    <Users className="mr-1 h-3 w-3 text-white" />
-                    {room.viewers}
-                  </Badge>
+            {hasError && !isLoading && (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="bg-destructive/10 p-6 rounded-full mb-6">
+                  <Play className="h-10 w-10 text-destructive rotate-90" />
                 </div>
-                <div className="p-4">
-                  <h3 className="font-semibold text-lg mb-2">{room.name}</h3>
-                  <p className="text-sm text-muted-foreground mb-3">En cours: {room.currentVideo}</p>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
-                    <div className="flex items-center">
-                      <Clock className="mr-1 h-4 w-4" />
-                      {room.duration}
-                    </div>
-                    <div>Par {room.creator}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Link href={`/room/${room.id}`} className="flex-1">
-                      <Button className="w-full">Rejoindre</Button>
-                    </Link>
-                    <Button variant="outline" className="flex-1 bg-transparent">
-                      Voir vidéos
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="shrink-0 bg-transparent"
-                      onClick={() => setSelectedRoom(room)}
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
+
+                <h3 className="text-2xl font-semibold mb-2">
+                  Erreur serveur
+                </h3>
+
+                <p className="text-muted-foreground max-w-md">
+                  Impossible de charger les salons pour le moment.
+                  Veuillez réessayer plus tard ou vérifier votre connexion.
+                </p>
+              </div>
+            )}
+
+          {!hasError && !isLoading && (
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               {rooms.map((room) => (
+                 <Card key={room.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                   <div className="relative">
+                     <img
+                       src={room.thumbnail || "/placeholder.svg"}
+                       alt={room.name}
+                       className="w-full h-48 object-cover"
+                     />
+                     <Badge className="absolute top-3 right-3 bg-primary text-white">
+                       <Users className="mr-1 h-3 w-3 text-white" />
+                       {room.viewers}
+                     </Badge>
+                   </div>
+                   <div className="p-4">
+                     <h3 className="font-semibold text-lg mb-2">{room.name}</h3>
+                     <p className="text-sm text-muted-foreground mb-3">En cours: {room.currentVideo}</p>
+                     <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
+                       <div className="flex items-center">
+                         <Clock className="mr-1 h-4 w-4" />
+                         {room.createdAt}
+                       </div>
+                       <div>Par {room.creator}</div>
+                     </div>
+                     <div className="flex gap-2">
+                       <Link href={`/room/${room.id}`} className="flex-1">
+                         <Button className="w-full">Rejoindre</Button>
+                       </Link>
+                       <Button variant="outline" className="flex-1 bg-transparent">
+                         Voir vidéos
+                       </Button>
+                       <Button
+                         variant="outline"
+                         size="icon"
+                         className="shrink-0 bg-transparent"
+                         onClick={() => setSelectedRoom(room)}
+                       >
+                         <ChevronDown className="h-4 w-4" />
+                       </Button>
+                     </div>
+                   </div>
+                 </Card>
+               ))}
+             </div>
+            )}
+          
         </div>
 
         {/* Features Section */}
@@ -478,7 +513,7 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createRoomOpen} onOpenChange={handleCloseCreateRoom}>
+      <Dialog open={!!user && createRoomOpen} onOpenChange={(open) => user && setCreateRoomOpen(open)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl">Créer un nouveau salon</DialogTitle>
@@ -540,11 +575,13 @@ export default function HomePage() {
 
       {isLoading && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-background p-6 rounded-lg">
-            <p className="text-lg">Chargement...</p>
+          <div className="bg-background p-8 rounded-xl flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent" />
+            <p className="text-lg font-medium">Chargement des salons...</p>
           </div>
         </div>
       )}
+
     </div>
   )
 }

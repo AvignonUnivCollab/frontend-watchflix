@@ -3,8 +3,8 @@ import { Room, CreateRoomRequest } from "../models/room"
 
 export const roomApi = {
   getAll: async (): Promise<Room[]> => {
-    const res = await fetch(`${API_BASE_URL}/rooms/list`)
-    if (!res.ok) throw new Error(res.status.toString())
+    const res = await fetch(`${API_BASE_URL}/rooms`)
+    if (!res.ok) throw new Error(res.toString())
     return res.json()
   },
 
@@ -16,18 +16,31 @@ export const roomApi = {
 
   create: async (data: CreateRoomRequest): Promise<Room> => {
     const formData = new FormData()
-    formData.append("name", data.name)
-    formData.append("description", data.description)
-    formData.append("creatorId", data.creatorId.toString())
-    if (data.thumbnail) formData.append("thumbnail", data.thumbnail)
-
+  
+    formData.append(
+      "data",
+      JSON.stringify({
+        name: data.name,
+        description: data.description,
+        creatorId: data.creatorId,
+      })
+    )
+  
+    if (!data.thumbnail) {
+      throw new Error("Image obligatoire")
+    }
+  
+    formData.append("image", data.thumbnail)
+  
     const res = await fetch(`${API_BASE_URL}/rooms`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: formData,
     })
-
-    if (!res.ok) throw new Error(res.status.toString())
+  
+    if (!res.ok) {
+      throw new Error(await res.text())
+    }
+  
     return res.json()
   },
 
