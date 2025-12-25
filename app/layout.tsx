@@ -31,14 +31,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
-    <html lang="fr">
-      <body className={`font-sans antialiased`}>
+    <html lang="fr" suppressHydrationWarning>
+      <body className="font-sans antialiased">
         {children}
       </body>
     </html>
   )
 }
+
