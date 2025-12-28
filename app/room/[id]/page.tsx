@@ -1,14 +1,16 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { roomApi } from "@/lib/api/room.api"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { API_BASE_URL } from "@/lib/config/api"
 import {
   Play,
   Pause,
@@ -25,10 +27,22 @@ import {
   MicOff,
   Bot,
   User,
+  Plus,
+  Upload,
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
+import { roomApi } from "@/lib/api/room.api"
+import type {
+  RoomDetail,
+  VideoType,
+  CreateVideoRequest,
+} from "@/lib/models/room-detail"
+
+import Image from "next/image"
 
 // Mock data pour les salons
 const availableVideos = [
@@ -123,18 +137,28 @@ export default function RoomPage() {
 
   const roomId = params?.id as string
 
-  const [currentVideo, setCurrentVideo] = useState(availableVideos[0])
+  const [room, setRoom] = useState<RoomDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const [currentVideo, setCurrentVideo] = useState<VideoType | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [playlist, setPlaylist] = useState(availableVideos.slice(0, 5))
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 1, user: "Alice", text: "Bienvenue dans le salon !", timestamp: "20:15" },
-    { id: 2, user: "Bob", text: "Salut tout le monde 👋", timestamp: "20:16" },
-    { id: 3, user: "Charlie", text: "Super choix de films !", timestamp: "20:17" },
-  ])
+  const [playlist, setPlaylist] = useState<VideoType[]>([])
+  const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [isBotThinking, setIsBotThinking] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
+
+  const [isCreateVideoOpen, setIsCreateVideoOpen] = useState(false)
+  const [newVideo, setNewVideo] = useState({
+    name: "",
+    description: "",
+    url: "",
+    thumbnail: null as File | null,
+  })
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [isCreatingVideo, setIsCreatingVideo] = useState(false)
 
   const videoRef = useRef<HTMLIFrameElement>(null)
 
@@ -147,11 +171,63 @@ export default function RoomPage() {
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map())
   const myPeerId = useRef(`peer-${Math.random().toString(36).substr(2, 9)}`)
 
+  useEffect(() => {
+    const fetchRoom = async () => {
+      const user = JSON.parse(localStorage.getItem("watchflix_user") || "null")
+      if (!user) {
+        router.push("/login")
+        return
+      }
+
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await roomApi.getDetail(Number(roomId), user.id)
+        setRoom(data)
+
+        // Set current video and playlist from API data
+        console.log("fff"+ data.currentVideo)
+        if (data.currentVideo) {
+          setCurrentVideo(data.currentVideo)
+        } else if (data.videos.length > 0) {
+          setCurrentVideo(data.videos[0])
+        }
+
+        setPlaylist(data.playlist || [])
+        setMessages(data.messages || [])
+      } catch (e) {
+        console.error("[v0] Error fetching room:", e)
+        setError("Impossible de charger le salon. Vérifiez votre connexion.")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchRoom()
+  }, [roomId, router])
+
+  useEffect(() => {
+    const joinRoom = async () => {
+      const user = JSON.parse(localStorage.getItem("watchflix_user") || "null")
+      if (!user || !room) return
+
+      try {
+        await roomApi.join(Number(roomId), user.id)
+      } catch (e) {
+        console.error("[v0] Error joining room:", e)
+      }
+    }
+
+    if (room) {
+      joinRoom()
+    }
+  }, [roomId, room])
+
   const isInPlaylist = (videoId: number) => {
     return playlist.some((v) => v.id === videoId)
   }
 
-  const toggleVideoInPlaylist = (video: (typeof availableVideos)[0]) => {
+  const toggleVideoInPlaylist = (video: VideoType) => {
     if (isInPlaylist(video.id)) {
       setPlaylist(playlist.filter((v) => v.id !== video.id))
     } else {
@@ -159,7 +235,7 @@ export default function RoomPage() {
     }
   }
 
-  const handleVideoClick = (video: (typeof availableVideos)[0]) => {
+  const handleVideoClick = (video: VideoType) => {
     setCurrentVideo(video)
     setIsPlaying(true)
     setCurrentTime(0)
@@ -197,7 +273,7 @@ export default function RoomPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               message: userMessage.replace("@bot", "").trim(),
-              roomContext: `Salon: Soirée Cinéma, Vidéo actuelle: ${currentVideo.title}, ${playlist.length} vidéos dans la playlist`,
+              roomContext: `Salon: ${room?.name}, Vidéo actuelle: ${currentVideo?.title}, ${playlist.length} vidéos dans la playlist`,
             }),
           })
 
@@ -249,37 +325,15 @@ export default function RoomPage() {
     setDraggedIndex(null)
   }
 
-  useEffect(() => {
-    const joinRoom = async () => {
-      const user = JSON.parse(
-        localStorage.getItem("watchflix_user") || "null"
-      )
-      if (!user) return
-
-      try {
-        await roomApi.join(Number(roomId), user.id)
-        console.log("Salon rejoint")
-      } catch (e) {
-        console.error("Erreur join room", e)
-      }
-    }
-
-    joinRoom()
-  }, [roomId])
-
-  
   const handleLeaveRoom = async () => {
-    const user = JSON.parse(
-      localStorage.getItem("watchflix_user") || "null"
-    )
+    const user = JSON.parse(localStorage.getItem("watchflix_user") || "null")
 
     try {
       if (user) {
         await roomApi.leave(Number(roomId), user.id)
-        console.log("Salon quitté")
       }
     } catch (e) {
-      console.error("Erreur leave room", e)
+      console.error("[v0] Error leaving room:", e)
     } finally {
       router.push("/")
     }
@@ -289,6 +343,64 @@ export default function RoomPage() {
     const roomUrl = window.location.href
     navigator.clipboard.writeText(roomUrl)
     alert("Lien du salon copié dans le presse-papiers!")
+  }
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setNewVideo({ ...newVideo, thumbnail: file })
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleCreateVideo = async () => {
+    if (!newVideo.name || !newVideo.description || !newVideo.url) {
+      alert("Veuillez remplir tous les champs obligatoires")
+      return
+    }
+
+    try {
+      setIsCreatingVideo(true)
+      const videoData: CreateVideoRequest = {
+        name: newVideo.name,
+        description: newVideo.description,
+        url: newVideo.url,
+        thumbnail: newVideo.thumbnail,
+        roomId: Number(roomId),
+      }
+
+      const createdVideo = await roomApi.createVideo(videoData)
+
+      // Add video to room's video list
+      if (room) {
+        setRoom({
+          ...room,
+          videos: [...room.videos, createdVideo],
+        })
+      }
+
+      // Reset form
+      setNewVideo({ name: "", description: "", url: "", thumbnail: null })
+      setImagePreview(null)
+      setIsCreateVideoOpen(false)
+
+      alert("Vidéo créée avec succès!")
+    } catch (error) {
+      console.error("[v0] Error creating video:", error)
+      alert("Erreur lors de la création de la vidéo")
+    } finally {
+      setIsCreatingVideo(false)
+    }
+  }
+
+  const handleCloseCreateVideo = () => {
+    setNewVideo({ name: "", description: "", url: "", thumbnail: null })
+    setImagePreview(null)
+    setIsCreateVideoOpen(false)
   }
 
   const createPeerConnection = (peerId: string): RTCPeerConnection => {
@@ -562,11 +674,51 @@ export default function RoomPage() {
     return () => window.removeEventListener("storage", handleStorageChange)
   }, [roomId])
 
-  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-lg font-medium">Chargement du salon...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Erreur de chargement</h2>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => router.push("/")}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour à l'accueil
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!room) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Salon introuvable</h2>
+          <p className="text-muted-foreground mb-4">Ce salon n'existe pas ou a été supprimé.</p>
+          <Button onClick={() => router.push("/")}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour à l'accueil
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50">
         <Navigation />
 
@@ -580,12 +732,13 @@ export default function RoomPage() {
 
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold">Soirée Cinéma 🎬</h1>
-              <p className="text-muted-foreground">Par Alice</p>
+              <h1 className="text-3xl font-bold">{room.name}</h1>
+              <p className="text-muted-foreground">Par {room.owner.name}</p>
             </div>
             <div className="flex items-center gap-3">
               <Badge className="bg-primary text-white px-4 py-2 text-lg">
-                <Users className="mr-2 h-4 w-4 text-white" />8 spectateurs
+                <Users className="mr-2 h-4 w-4 text-white" />
+                {room.viewers} spectateurs
               </Badge>
               <Button onClick={handleInvite} variant="outline">
                 <UserPlus className="mr-2 h-4 w-4" />
@@ -602,97 +755,123 @@ export default function RoomPage() {
 
       <main className="container mx-auto p-4">
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Column - Video Player and Available Videos */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Main Video Player */}
-            <div>
-              <div className="relative">
-                {isPlaying ? (
-                  <iframe
-                    ref={videoRef}
-                    src={`https://www.youtube.com/embed/${getYoutubeVideoId(currentVideo.url)}?autoplay=1`}
-                    className="w-full max-h-[400px] aspect-video rounded-lg"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                ) : (
-                  <>
-                    <img
-                      src={currentVideo.thumbnail || "/placeholder.svg"}
-                      alt={currentVideo.title}
-                      className="w-full max-h-[400px] object-cover rounded-lg"
+            {currentVideo ? (
+              <div>
+                <div className="relative">
+                  {isPlaying ? (
+                    <iframe
+                      ref={videoRef}
+                      src={`https://www.youtube.com/embed/${getYoutubeVideoId(currentVideo.url)}?autoplay=1`}
+                      className="w-full max-h-[400px] aspect-video rounded-lg"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
                     />
+                  ) : (
+                    <>
+                      <img
+                        src={`${API_BASE_URL}${currentVideo.thumbnail}` || "/placeholder.svg"}
+                        alt={currentVideo.title}
+                        className="w-full max-h-[400px] object-cover rounded-lg"
+                      />
+                      <Button
+                        size="lg"
+                        className="absolute inset-0 m-auto h-16 w-16 rounded-full"
+                        onClick={handleTogglePlay}
+                      >
+                        <Play className="h-8 w-8" />
+                      </Button>
+                    </>
+                  )}
+                  {isPlaying && (
                     <Button
                       size="lg"
-                      className="absolute inset-0 m-auto h-16 w-16 rounded-full"
+                      className="absolute bottom-4 left-4 h-12 w-12 rounded-full"
                       onClick={handleTogglePlay}
                     >
-                      <Play className="h-8 w-8" />
+                      <Pause className="h-6 w-6" />
                     </Button>
-                  </>
-                )}
-                {isPlaying && (
+                  )}
                   <Button
-                    size="lg"
-                    className="absolute bottom-4 left-4 h-12 w-12 rounded-full"
-                    onClick={handleTogglePlay}
+                    size="sm"
+                    variant={isInPlaylist(currentVideo.id) ? "default" : "secondary"}
+                    className="absolute top-2 right-2"
+                    onClick={() => toggleVideoInPlaylist(currentVideo)}
                   >
-                    <Pause className="h-6 w-6" />
+                    <Heart className={`h-4 w-4 ${isInPlaylist(currentVideo.id) ? "fill-current" : ""}`} />
                   </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant={isInPlaylist(currentVideo.id) ? "default" : "secondary"}
-                  className="absolute top-2 right-2"
-                  onClick={() => toggleVideoInPlaylist(currentVideo)}
-                >
-                  <Heart className={`h-4 w-4 ${isInPlaylist(currentVideo.id) ? "fill-current" : ""}`} />
+                </div>
+                <div className="mt-4">
+                  <h2 className="text-2xl font-bold">{currentVideo.title}</h2>
+                  <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{currentVideo.description}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-16 border-2 border-dashed rounded-lg">
+                <Play className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="text-xl font-bold mb-2">Aucune vidéo sélectionnée</h3>
+                <p className="text-muted-foreground">
+                  {room.videos.length > 0
+                    ? "Cliquez sur une vidéo ci-dessous pour commencer"
+                    : "Ajoutez une vidéo pour commencer"}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold">Toutes les vidéos disponibles ({room.videos.length})</h3>
+                <Button onClick={() => setIsCreateVideoOpen(true)} size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Ajouter une vidéo
                 </Button>
               </div>
-              <div className="mt-4">
-                <h2 className="text-2xl font-bold">{currentVideo.title}</h2>
-                <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{currentVideo.description}</p>
-              </div>
-            </div>
 
-            {/* Available Videos Grid */}
-            <div>
-              <h3 className="font-bold mb-4">Toutes les vidéos disponibles</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {availableVideos.map((video) => (
-                  <div key={video.id} className="space-y-2">
-                    <div className="relative cursor-pointer group" onClick={() => handleVideoClick(video)}>
-                      <img
-                        src={video.thumbnail || "/placeholder.svg"}
-                        alt={video.title}
-                        className="w-full aspect-video object-cover rounded-lg"
-                      />
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                        <Play className="h-8 w-8 text-white" />
+              {room.videos.length === 0 ? (
+                <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                  <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <p className="text-sm text-muted-foreground mb-4">Aucune vidéo dans ce salon</p>
+                  <Button onClick={() => setIsCreateVideoOpen(true)} variant="outline">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Ajouter la première vidéo
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {room.videos.map((video) => (
+                    <div key={video.id} className="space-y-2">
+                      <div className="relative cursor-pointer group" onClick={() => handleVideoClick(video)}>
+                        <img
+                          src={`${API_BASE_URL}${video.thumbnail}` || "/placeholder.svg"}
+                          alt={video.title}
+                          className="w-full aspect-video object-cover rounded-lg"
+                        />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                          <Play className="h-8 w-8 text-white" />
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={isInPlaylist(video.id) ? "default" : "secondary"}
+                          className="absolute top-2 right-2 h-8 w-8 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleVideoInPlaylist(video)
+                          }}
+                        >
+                          <Heart className={`h-4 w-4 ${isInPlaylist(video.id) ? "fill-current" : ""}`} />
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        variant={isInPlaylist(video.id) ? "default" : "secondary"}
-                        className="absolute top-2 right-2 h-8 w-8 p-0"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleVideoInPlaylist(video)
-                        }}
-                      >
-                        <Heart className={`h-4 w-4 ${isInPlaylist(video.id) ? "fill-current" : ""}`} />
-                      </Button>
+                      <div>
+                        <p className="text-sm font-medium line-clamp-2">{video.title}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{video.description}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium line-clamp-2">{video.title}</p>
-                      <p className="text-xs text-muted-foreground line-clamp-2">{video.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Right Column - Video Conference + Chat + Playlist */}
           <div className="space-y-4">
             {/* Video Conference */}
             <Card className="p-4">
@@ -747,33 +926,41 @@ export default function RoomPage() {
                 </div>
               </div>
               <ScrollArea className="flex-1 p-4 overflow-y-auto">
-                <div className="space-y-4">
-                  {messages.map((message) => (
-                    <div key={message.id} className="space-y-1">
-                      <div className="flex items-baseline gap-2">
-                        <span
-                          className={`font-semibold text-sm ${message.isBot ? "text-primary flex items-center gap-1" : ""}`}
-                        >
-                          {message.isBot && <Bot className="h-3 w-3" />}
-                          {message.user}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{message.timestamp}</span>
+                {messages.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Send className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Aucun message</p>
+                    <p className="text-xs mt-1">Soyez le premier à écrire!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {messages.map((message) => (
+                      <div key={message.id} className="space-y-1">
+                        <div className="flex items-baseline gap-2">
+                          <span
+                            className={`font-semibold text-sm ${message.isBot ? "text-primary flex items-center gap-1" : ""}`}
+                          >
+                            {message.isBot && <Bot className="h-3 w-3" />}
+                            {message.user}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{message.timestamp}</span>
+                        </div>
+                        <p className={`text-sm ${message.isBot ? "bg-muted p-2 rounded" : ""}`}>{message.text}</p>
                       </div>
-                      <p className={`text-sm ${message.isBot ? "bg-muted p-2 rounded" : ""}`}>{message.text}</p>
-                    </div>
-                  ))}
-                  {isBotThinking && (
-                    <div className="space-y-1">
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-semibold text-sm text-primary flex items-center gap-1">
-                          <Bot className="h-3 w-3" />
-                          Bot Assistant
-                        </span>
+                    ))}
+                    {isBotThinking && (
+                      <div className="space-y-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-semibold text-sm text-primary flex items-center gap-1">
+                            <Bot className="h-3 w-3" />
+                            Bot Assistant
+                          </span>
+                        </div>
+                        <p className="text-sm bg-muted p-2 rounded animate-pulse">Réflexion en cours...</p>
                       </div>
-                      <p className="text-sm bg-muted p-2 rounded animate-pulse">Réflexion en cours...</p>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </ScrollArea>
               <div className="p-4 border-t flex gap-2 flex-shrink-0">
                 <Input
@@ -816,7 +1003,7 @@ export default function RoomPage() {
                       >
                         <GripVertical className="h-4 w-4 text-muted-foreground" />
                         <img
-                          src={video.thumbnail || "/placeholder.svg"}
+                          src={`${API_BASE_URL}${video.thumbnail}` || "/placeholder.svg"}
                           alt={video.title}
                           className="w-12 h-12 object-cover rounded"
                         />
@@ -834,6 +1021,86 @@ export default function RoomPage() {
           </div>
         </div>
       </main>
+
+      <Dialog open={isCreateVideoOpen} onOpenChange={setIsCreateVideoOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Ajouter une vidéo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="video-thumbnail">Image de couverture</Label>
+              <div className="flex flex-col gap-2">
+                <Input
+                  id="video-thumbnail"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="cursor-pointer"
+                />
+                {imagePreview && (
+                  <div className="relative w-full h-48 rounded-lg overflow-hidden border">
+                    <Image src={imagePreview || "/placeholder.svg"} alt="Preview" fill className="object-cover" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="video-name">Nom de la vidéo *</Label>
+              <Input
+                id="video-name"
+                placeholder="Ex: Ma vidéo préférée"
+                value={newVideo.name}
+                onChange={(e) => setNewVideo({ ...newVideo, name: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="video-url">URL de la vidéo *</Label>
+              <Input
+                id="video-url"
+                placeholder="Ex: https://youtube.com/watch?v=..."
+                value={newVideo.url}
+                onChange={(e) => setNewVideo({ ...newVideo, url: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="video-description">Description *</Label>
+              <Textarea
+                id="video-description"
+                placeholder="Décrivez votre vidéo..."
+                value={newVideo.description}
+                onChange={(e) => setNewVideo({ ...newVideo, description: e.target.value })}
+                rows={4}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={handleCloseCreateVideo} disabled={isCreatingVideo}>
+              Annuler
+            </Button>
+            <Button
+              onClick={handleCreateVideo}
+              disabled={!newVideo.name || !newVideo.description || !newVideo.url || isCreatingVideo}
+            >
+              {isCreatingVideo ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Création...
+                </>
+              ) : (
+                <>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Créer la vidéo
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

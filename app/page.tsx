@@ -251,6 +251,10 @@ export default function HomePage() {
     }
   }
 
+  const seeVideo =  (roomId: number) => {
+    if (!user) return
+    router.push(`/room/${roomId}`)
+  }
 
   const handleCreateRoom = async () => {
     if (!newRoom.name || !newRoom.description || !newRoom.thumbnail || !user) {
@@ -423,7 +427,7 @@ export default function HomePage() {
                         )}
                       </div>
 
-                      <Button variant="outline" className="flex-1 bg-transparent">
+                      <Button variant="outline" className="flex-1 bg-transparent" onClick={ () => seeVideo(room.id)}>
                         Voir vidéos
                       </Button>
 
