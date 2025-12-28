@@ -1,14 +1,17 @@
-export interface Room {
-    id?: number
+
+  export interface RoomUI {
+    id: number
     name: string
-    thumbnail: string | null
-    currentVideoId?: number | null
-    members?: number
-    duration?: number
+    thumbnail: string
+    currentVideo: string
+    viewers: number
     creator: string
     description: string
-    createdAt?: string
+    createdAt: string
+    memberIds: number[]
+    isMember: boolean
   }
+  
   
   export interface CreateRoomRequest {
     name: string

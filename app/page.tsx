@@ -5,7 +5,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Play, Users, Clock, ChevronDown, List, Plus,  Video, Package } from "lucide-react"
+import { Play, Users, Clock, ChevronDown, List, Plus, Video, Package } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
 import { authApi } from "@/lib/api/auth.api"
 import { authStorage } from "@/lib/storage/auth.storage"
+import { useRouter } from "next/navigation"
 import { roomApi } from "@/lib/api/room.api"
 import { mapRoomToUI } from "@/lib/mappers/room.mapper"
 import { RoomUI } from "@/lib/models/room.ui"
@@ -28,6 +29,7 @@ const mockRooms = [
     viewers: 8,
     duration: "2:16:23",
     creator: "Alice",
+    isMember: false,
     description: "Une soirée dédiée aux grands classiques du cinéma. Venez découvrir ou redécouvrir des films cultes !",
     createdAt: "Il y a 2 heures",
     playlist: [
@@ -49,6 +51,7 @@ const mockRooms = [
     viewers: 15,
     duration: "3:45:12",
     creator: "Bob",
+    isMember: false,
     description: "Les meilleurs concerts et performances live. Une expérience musicale immersive !",
     createdAt: "Il y a 5 heures",
     playlist: [
@@ -68,6 +71,7 @@ const mockRooms = [
     currentVideo: "Speedrun Championship",
     viewers: 23,
     duration: "1:32:45",
+    isMember: false,
     creator: "Charlie",
     description: "Marathon de gaming avec les meilleurs speedruns et compétitions e-sport.",
     createdAt: "Il y a 1 heure",
@@ -88,6 +92,7 @@ const mockRooms = [
     currentVideo: "Planet Earth II",
     viewers: 12,
     duration: "0:58:30",
+    isMember: false,
     creator: "Diana",
     description: "Explorez la beauté de notre planète avec des documentaires captivants sur la nature.",
     createdAt: "Il y a 3 heures",
@@ -108,6 +113,7 @@ const mockRooms = [
     thumbnail: "/anime-japanese-animation.jpg",
     currentVideo: "Your Name",
     viewers: 19,
+    isMember: false,
     duration: "1:46:15",
     creator: "Emma",
     description: "Soirée anime pour tous les fans ! Des classiques aux nouveautés.",
@@ -130,6 +136,7 @@ const mockRooms = [
     currentVideo: "Stand-up Special",
     viewers: 6,
     duration: "1:12:00",
+    isMember: false,
     creator: "Frank",
     description: "Rires garantis avec les meilleurs stand-up et sketches comiques !",
     createdAt: "Il y a 30 minutes",
@@ -160,6 +167,7 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [user, setUser] = useState<any | null>(null)
   const [hasError, setHasError] = useState(false)
+  const router = useRouter()
 
 
   useEffect(() => {
@@ -172,32 +180,77 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    loadRooms()
-  }, [])
+    if (user) {
+      loadRooms()
+    }
+  }, [user])
+
 
 
   const loadRooms = async () => {
     setIsLoading(true)
     setHasError(false)
-  
+
     try {
       // délai UX de 3 secondes
       await new Promise((resolve) => setTimeout(resolve, 3000))
-  
+
       const fetchedRooms = await roomApi.getAll()
       console.log("Rooms loaded from API:", fetchedRooms)
-  
-      const uiRooms: RoomUI[] = fetchedRooms.map(mapRoomToUI)
+
+      const uiRooms: RoomUI[] = fetchedRooms.map(room =>
+        mapRoomToUI(room, user?.id)
+      )
+
       setRooms(uiRooms)
     } catch (error) {
       console.error("Erreur serveur :", error)
       setHasError(true)
-      setRooms([]) 
+      setRooms([])
     } finally {
       setIsLoading(false)
     }
   }
-  
+
+
+  const joinRoom = async (roomId: number) => {
+    if (!user) {
+      setAuthDialogOpen(true)
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      const message = await roomApi.join(roomId, user.id)
+      console.log("Join room:", message)
+
+      // Redirection vers la page du salon
+      router.push(`/room/${roomId}`)
+    } catch (error: any) {
+      console.error("Erreur join room:", error)
+      //alert(error?.message || "Impossible de rejoindre le salon")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+
+
+  const leaveRoom = async (roomId: number) => {
+    if (!user) return
+
+    setIsLoading(true)
+    try {
+      await roomApi.leave(roomId, user.id)
+      await loadRooms() // refresh état
+    } catch (error) {
+      //alert("Impossible de quitter le salon")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
 
   const handleCreateRoom = async () => {
     if (!newRoom.name || !newRoom.description || !newRoom.thumbnail || !user) {
@@ -213,11 +266,11 @@ export default function HomePage() {
         creatorId: user.id,
         thumbnail: newRoom.thumbnail,
       })
-  
+
       console.log("Room created:", createdRoom)
-  
+
       await loadRooms()
-  
+
       setCreateRoomOpen(false)
       setNewRoom({ name: "", thumbnail: null, description: "" })
       setImagePreview(null)
@@ -228,7 +281,7 @@ export default function HomePage() {
       setIsLoading(false)
     }
   }
-  
+
 
   const handleCloseCreateRoom = (open: boolean) => {
     setCreateRoomOpen(open)
@@ -270,7 +323,7 @@ export default function HomePage() {
             collaboratives
           </p>
           <div className="flex gap-4 justify-center mt-8">
-            <Button size="lg" className="text-lg"   onClick={() => {
+            <Button size="lg" className="text-lg" onClick={() => {
               if (!user) {
                 setAuthDialogOpen(true)
                 return
@@ -308,70 +361,88 @@ export default function HomePage() {
         {/* Rooms Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold mb-6">Salons populaires</h2>
-            {hasError && !isLoading && (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="bg-destructive/10 p-6 rounded-full mb-6">
-                  <Play className="h-10 w-10 text-destructive rotate-90" />
-                </div>
-
-                <h3 className="text-2xl font-semibold mb-2">
-                  Erreur serveur
-                </h3>
-
-                <p className="text-muted-foreground max-w-md">
-                  Impossible de charger les salons pour le moment.
-                  Veuillez réessayer plus tard ou vérifier votre connexion.
-                </p>
+          {hasError && !isLoading && (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="bg-destructive/10 p-6 rounded-full mb-6">
+                <Play className="h-10 w-10 text-destructive rotate-90" />
               </div>
-            )}
 
-          {!hasError && !isLoading && rooms.length >= 0 &&(
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {rooms.map((room) => (
-                 <Card key={room.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                   <div className="relative">
-                     <img
-                       src={room.thumbnail || "/placeholder.svg"}
-                       alt={room.name}
-                       className="w-full h-48 object-cover"
-                     />
-                     <Badge className="absolute top-3 right-3 bg-primary text-white">
-                       <Users className="mr-1 h-3 w-3 text-white" />
-                       {room.viewers}
-                     </Badge>
-                   </div>
-                   <div className="p-4">
-                     <h3 className="font-semibold text-lg mb-2">{room.name}</h3>
-                     <p className="text-sm text-muted-foreground mb-3">En cours: {room.currentVideo}</p>
-                     <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
-                       <div className="flex items-center">
-                         <Clock className="mr-1 h-4 w-4" />
-                         {room.createdAt}
-                       </div>
-                       <div>Par {room.creator}</div>
-                     </div>
-                     <div className="flex gap-2">
-                       <Link href={`/room/${room.id}`} className="flex-1">
-                         <Button className="w-full">Rejoindre</Button>
-                       </Link>
-                       <Button variant="outline" className="flex-1 bg-transparent">
-                         Voir vidéos
-                       </Button>
-                       <Button
-                         variant="outline"
-                         size="icon"
-                         className="shrink-0 bg-transparent"
-                         onClick={() => setSelectedRoom(room)}
-                       >
-                         <ChevronDown className="h-4 w-4" />
-                       </Button>
-                     </div>
-                   </div>
-                 </Card>
-               ))}
-             </div>
-            )}
-          
+              <h3 className="text-2xl font-semibold mb-2">
+                Erreur serveur
+              </h3>
+
+              <p className="text-muted-foreground max-w-md">
+                Impossible de charger les salons pour le moment.
+                Veuillez réessayer plus tard ou vérifier votre connexion.
+              </p>
+            </div>
+          )}
+
+          {!hasError && !isLoading && rooms.length >= 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {rooms.map((room) => (
+                <Card key={room.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                  <div className="relative">
+                    <img
+                      src={room.thumbnail || "/placeholder.svg"}
+                      alt={room.name}
+                      className="w-full h-48 object-cover"
+                    />
+                    <Badge className="absolute top-3 right-3 bg-primary text-white">
+                      <Users className="mr-1 h-3 w-3 text-white" />
+                      {room.viewers}
+                    </Badge>
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-semibold text-lg mb-2">{room.name}</h3>
+                    <p className="text-sm text-muted-foreground mb-3">En cours: {room.currentVideo}</p>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
+                      <div className="flex items-center">
+                        <Clock className="mr-1 h-4 w-4" />
+                        {room.createdAt}
+                      </div>
+                      <div>Par {room.creator}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        {room.isMember ? (
+                          <Button
+                            className="w-full"
+                            variant="destructive"
+                            onClick={() => leaveRoom(room.id)}
+                          >
+                            Quitter
+                          </Button>
+                        ) : (
+                          <Button
+                            className="w-full"
+                            onClick={() => joinRoom(room.id)}
+                          >
+                            Rejoindre
+                          </Button>
+                        )}
+                      </div>
+
+                      <Button variant="outline" className="flex-1 bg-transparent">
+                        Voir vidéos
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="shrink-0 bg-transparent"
+                        onClick={() => setSelectedRoom(room)}
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
         </div>
 
         {/* Features Section */}
@@ -529,7 +600,19 @@ export default function HomePage() {
             </div>
 
             <div className="flex gap-2 pt-4">
-              <Button className="flex-1">Rejoindre le salon</Button>
+              {selectedRoom && (
+                <Button
+                  className="flex-1"
+                  variant={selectedRoom.isMember ? "destructive" : "default"}
+                  onClick={() =>
+                    selectedRoom.isMember
+                      ? leaveRoom(selectedRoom.id)
+                      : joinRoom(selectedRoom.id)
+                  }
+                >
+                  {selectedRoom.isMember ? "Quitter le salon" : "Rejoindre le salon"}
+                </Button>
+              )}
               <Button variant="outline" className="flex-1 bg-transparent">
                 Voir la playlist complète
               </Button>

@@ -76,7 +76,7 @@ export const roomApi = {
   },
 
   // -----------------------
-  // JOIN ROOM ✅
+  // JOIN ROOM
   // -----------------------
   join: async (roomId: number, userId: number): Promise<string> => {
     const res = await fetch(
@@ -89,7 +89,7 @@ export const roomApi = {
   },
 
   // -----------------------
-  // LEAVE ROOM ✅
+  // LEAVE ROOM 
   // -----------------------
   leave: async (roomId: number, userId: number): Promise<string> => {
     const res = await fetch(

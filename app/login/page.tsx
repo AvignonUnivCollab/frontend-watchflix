@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,15 +28,15 @@ export default function LoginPage() {
     setError("")
 
     try {
-      console.log("API URL =", process.env.NEXT_PUBLIC_API_URL)
 
       const response = await authApi.login({ email, password })
-      console.error("Server response:", response)
+      //console.error("Server response:", response)
+
       authStorage.save(response)
       //console.error("local save:", authStorage.get())
       router.push("/")
     } catch (err: any) {
-      console.error("Login error:", err)
+      console.error(err)
       setError("Email ou mot de passe incorrect")
       //setError(err.message)
     } finally {
