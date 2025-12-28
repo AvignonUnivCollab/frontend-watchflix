@@ -1,5 +1,7 @@
 import { API_BASE_URL } from "../config/api"
 import { Room, CreateRoomRequest } from "../models/room"
+import { RoomDetail } from "../models/room-detail"
+
 
 export const roomApi = {
   // -----------------------
@@ -19,6 +21,16 @@ export const roomApi = {
     if (!res.ok) throw new Error(res.status.toString())
     return res.json()
   },
+
+
+  getDetail: async (id: number, userId: number): Promise<RoomDetail> => {
+    const res = await fetch(
+      `${API_BASE_URL}/rooms/${id}?userId=${userId}`
+    )
+    if (!res.ok) throw new Error(await res.text())
+    return res.json()
+  },
+
 
   // -----------------------
   // CREATE ROOM
@@ -76,7 +88,7 @@ export const roomApi = {
   },
 
   // -----------------------
-  // JOIN ROOM ✅
+  // JOIN ROOM
   // -----------------------
   join: async (roomId: number, userId: number): Promise<string> => {
     const res = await fetch(
@@ -89,7 +101,7 @@ export const roomApi = {
   },
 
   // -----------------------
-  // LEAVE ROOM ✅
+  // LEAVE ROOM 
   // -----------------------
   leave: async (roomId: number, userId: number): Promise<string> => {
     const res = await fetch(

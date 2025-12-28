@@ -7,6 +7,7 @@ import { useEffect, useState } from "react"
 import { authStorage } from "@/lib/storage/auth.storage"
 
 type UserSession = {
+  id : number
   email: string
   nom: string
   prenom: string
