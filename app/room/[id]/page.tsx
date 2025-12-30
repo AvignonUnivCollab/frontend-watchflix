@@ -36,6 +36,8 @@ import { Navigation } from "@/components/navigation"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { roomApi } from "@/lib/api/room.api"
+import { videoApi } from "@/lib/api/video.api"
+
 import type {
   RoomDetail,
   VideoType,
@@ -75,7 +77,7 @@ const availableVideos = [
   },
   {
     id: 4,
-    title: "Blade Runner 2049",
+    title: "Blade Runner 2049", 
     description:
       "Un jeune blade runner découvre un secret enfoui depuis longtemps qui pourrait plonger ce qui reste de la société dans le chaos.",
     thumbnail: "/blade-runner-2049-poster.png",
@@ -130,6 +132,7 @@ interface PeerConnection {
   connection: RTCPeerConnection
   stream?: MediaStream
 }
+
 
 export default function RoomPage() {
   const params = useParams()
@@ -356,46 +359,50 @@ export default function RoomPage() {
       reader.readAsDataURL(file)
     }
   }
-
-  const handleCreateVideo = async () => {
-    if (!newVideo.name || !newVideo.description || !newVideo.url) {
-      alert("Veuillez remplir tous les champs obligatoires")
-      return
-    }
-
-    try {
-      setIsCreatingVideo(true)
-      const videoData: CreateVideoRequest = {
-        name: newVideo.name,
-        description: newVideo.description,
-        url: newVideo.url,
-        thumbnail: newVideo.thumbnail,
-        roomId: Number(roomId),
-      }
-
-      const createdVideo = await roomApi.createVideo(videoData)
-
-      // Add video to room's video list
-      if (room) {
-        setRoom({
-          ...room,
-          videos: [...room.videos, createdVideo],
-        })
-      }
-
-      // Reset form
-      setNewVideo({ name: "", description: "", url: "", thumbnail: null })
-      setImagePreview(null)
-      setIsCreateVideoOpen(false)
-
-      alert("Vidéo créée avec succès!")
-    } catch (error) {
-      console.error("[v0] Error creating video:", error)
-      alert("Erreur lors de la création de la vidéo")
-    } finally {
-      setIsCreatingVideo(false)
-    }
+const handleCreateVideo = async () => {
+  if (!newVideo.name || !newVideo.url || !newVideo.description) {
+    alert("Veuillez remplir tous les champs obligatoires")
+    return
   }
+
+  const user = JSON.parse(localStorage.getItem("watchflix_user") || "null")
+  if (!user?.id) {
+    alert("Vous devez être connecté")
+    return
+  }
+
+  if (room?.videos.some(v => v.title === newVideo.name)) {
+    alert("Une vidéo avec ce titre existe déjà dans ce salon")
+    return
+  }
+
+  try {
+    setIsCreatingVideo(true)
+
+    const createdVideo = await videoApi.create({
+      name: newVideo.name,
+      url: newVideo.url, 
+      roomId: Number(roomId),
+      userId: user.id,
+    })
+
+    setRoom(prev =>
+      prev
+        ? { ...prev, videos: [...prev.videos, createdVideo] }
+        : prev
+    )
+
+    setNewVideo({ name: "", description: "", url: "", thumbnail: null })
+    setImagePreview(null)
+    setIsCreateVideoOpen(false)
+
+  } catch (e: any) {
+    alert(e.message) 
+  } finally {
+    setIsCreatingVideo(false)
+  }
+}
+
 
   const handleCloseCreateVideo = () => {
     setNewVideo({ name: "", description: "", url: "", thumbnail: null })
@@ -410,14 +417,13 @@ export default function RoomPage() {
 
     const pc = new RTCPeerConnection(configuration)
 
-    // Add local stream tracks to peer connection
+  
     if (localStream) {
       localStream.getTracks().forEach((track) => {
         pc.addTrack(track, localStream)
       })
     }
 
-    // Handle incoming remote stream
     pc.ontrack = (event) => {
       console.log("[v0] Received remote track from", peerId)
       const stream = event.streams[0]
@@ -428,7 +434,6 @@ export default function RoomPage() {
       })
     }
 
-    // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         console.log("[v0] Sending ICE candidate to", peerId)
@@ -716,6 +721,15 @@ export default function RoomPage() {
       </div>
     )
   }
+const getYoutubeThumbnail = (url: string) => {
+  const match = url.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([^?&]+)/
+  )
+
+  return match
+    ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+    : "/placeholder.svg"
+}
 
   return (
     <div className="min-h-screen bg-background">
@@ -770,7 +784,8 @@ export default function RoomPage() {
                   ) : (
                     <>
                       <img
-                        src={`${API_BASE_URL}${currentVideo.thumbnail}` || "/placeholder.svg"}
+  
+                       src={getYoutubeThumbnail(currentVideo.url)}
                         alt={currentVideo.title}
                         className="w-full max-h-[400px] object-cover rounded-lg"
                       />
@@ -842,7 +857,8 @@ export default function RoomPage() {
                     <div key={video.id} className="space-y-2">
                       <div className="relative cursor-pointer group" onClick={() => handleVideoClick(video)}>
                         <img
-                          src={`${API_BASE_URL}${video.thumbnail}` || "/placeholder.svg"}
+                          src={getYoutubeThumbnail(video.url)}
+
                           alt={video.title}
                           className="w-full aspect-video object-cover rounded-lg"
                         />
@@ -1003,7 +1019,8 @@ export default function RoomPage() {
                       >
                         <GripVertical className="h-4 w-4 text-muted-foreground" />
                         <img
-                          src={`${API_BASE_URL}${video.thumbnail}` || "/placeholder.svg"}
+                          src={getYoutubeThumbnail(video.url)}
+
                           alt={video.title}
                           className="w-12 h-12 object-cover rounded"
                         />
