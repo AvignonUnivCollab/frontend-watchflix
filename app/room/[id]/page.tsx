@@ -206,49 +206,41 @@ export default function RoomPage() {
   // listenner socketIO
   useEffect(() => {
     if (!socketRef.current) return
-
-    socketRef.current.on("video-action", (action) => {
-      if (!videoRef.current) return
-
+  
+    const socket = socketRef.current
+  
+    const handleVideoAction = (action: any) => {
+      const iframe = videoRef.current?.contentWindow
+      if (!iframe) return
+  
       switch (action.type) {
         case "play":
-          videoRef.current.contentWindow?.postMessage(
+          iframe.postMessage(
             JSON.stringify({ event: "command", func: "playVideo" }),
             "*"
           )
           setIsPlaying(true)
           break
-
+  
         case "pause":
-          videoRef.current.contentWindow?.postMessage(
+          iframe.postMessage(
             JSON.stringify({ event: "command", func: "pauseVideo" }),
             "*"
           )
           setIsPlaying(false)
           break
-
-        case "seek":
-          videoRef.current.contentWindow?.postMessage(
-            JSON.stringify({
-              event: "command",
-              func: "seekTo",
-              args: [action.time, true],
-            }),
-            "*"
-          )
-          break
       }
-    })
-
-    socketRef.current.on("sync-state", (state) => {
-      setIsPlaying(state.isPlaying)
-    })
-
-    return () => {
-      socketRef.current?.off("video-action")
-      socketRef.current?.off("sync-state")
     }
-  }, [])
+  
+    socket.on("video-action", handleVideoAction)
+  
+    return () => {
+      socket.off("video-action", handleVideoAction)
+    }
+  }, []) // ✅ TOUJOURS un tableau vide
+  
+  
+  
 
 
 
@@ -320,20 +312,16 @@ export default function RoomPage() {
 
   const handleTogglePlay = () => {
     if (!currentVideo) return
-
-    const action = {
-      type: isPlaying ? "pause" : "play",
-      videoId: currentVideo.id,
-      time: currentTime,
-    }
-
+  
     socketRef.current?.emit("video-action", {
       roomId,
-      action,
+      action: {
+        type: isPlaying ? "pause" : "play",
+        videoId: currentVideo.id,
+      },
     })
-
-    setIsPlaying(!isPlaying)
   }
+  
 
 
   const getYoutubeVideoId = (url: string) => {
@@ -862,48 +850,26 @@ export default function RoomPage() {
             {currentVideo ? (
               <div>
                 <div className="relative">
-                  {isPlaying ? (
-                    <iframe
-                      ref={videoRef}
-                      src={`https://www.youtube.com/embed/${getYoutubeVideoId(currentVideo.url)}?autoplay=1&enablejsapi=1`}
-                      className="w-full max-h-[400px] aspect-video rounded-lg"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  ) : (
-                    <>
-                      <img
-                        src={`${API_BASE_URL}${currentVideo.thumbnail}`}
-                        alt={currentVideo.title}
-                        className="w-full max-h-[400px] object-cover rounded-lg"
-                      />
-                      <Button
-                        size="lg"
-                        className="absolute inset-0 m-auto h-16 w-16 rounded-full"
-                        onClick={handleTogglePlay}
-                      >
-                        <Play className="h-8 w-8" />
-                      </Button>
-                    </>
-                  )}
-                  {isPlaying && (
-                    <Button
-                      size="lg"
-                      className="absolute bottom-4 left-4 h-12 w-12 rounded-full"
-                      onClick={handleTogglePlay}
-                    >
-                      <Pause className="h-6 w-6" />
-                    </Button>
-                  )}
+                  <iframe
+                    ref={videoRef}
+                    src={`https://www.youtube.com/embed/${getYoutubeVideoId(
+                      currentVideo.url
+                    )}?enablejsapi=1&origin=${typeof window !== "undefined" ? window.location.origin : ""}`}
+                    className="pointer-events-none w-full max-h-[400px] aspect-video rounded-lg"
+                    allow="autoplay; encrypted-media"
+                    allowFullScreen
+                  />
+
+                  {/* Bouton custom par-dessus */}
                   <Button
-                    size="sm"
-                    variant={isInPlaylist(currentVideo.id) ? "default" : "secondary"}
-                    className="absolute top-2 right-2"
-                    onClick={() => toggleVideoInPlaylist(currentVideo)}
+                    size="lg"
+                    className="absolute inset-0 m-auto h-16 w-16 rounded-full bg-black/70"
+                    onClick={handleTogglePlay}
                   >
-                    <Heart className={`h-4 w-4 ${isInPlaylist(currentVideo.id) ? "fill-current" : ""}`} />
+                    {isPlaying ? <Pause /> : <Play />}
                   </Button>
                 </div>
+
                 <div className="mt-4">
                   <h2 className="text-2xl font-bold">{currentVideo.title}</h2>
                   <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{currentVideo.description}</p>
