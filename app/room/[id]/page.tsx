@@ -533,31 +533,29 @@ export default function RoomPage() {
   }
 
   const startLocalStream = async () => {
+    if (!isVideoEnabled && !isAudioEnabled) {
+      console.warn("No media requested, skipping getUserMedia")
+      return
+    }
+  
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: isVideoEnabled,
         audio: isAudioEnabled,
       })
+  
       setLocalStream(stream)
+  
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
       }
-
-      // Announce presence in room
-      const announcement = {
-        type: "join",
-        peerId: myPeerId.current,
-        roomId: roomId,
-        name: "Utilisateur",
-      }
-      localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(announcement))
-
-      console.log("Started local stream, announced presence:", myPeerId.current)
+  
     } catch (error) {
       console.error("Error accessing media devices:", error)
-      alert("Impossible d'accéder à la caméra/microphone. Vérifiez les permissions.")
+      alert("Impossible d'accéder à la caméra/microphone.")
     }
   }
+  
 
   const stopLocalStream = () => {
     // Close all peer connections
@@ -724,11 +722,8 @@ export default function RoomPage() {
     } else {
       stopLocalStream()
     }
-
-    return () => {
-      stopLocalStream()
-    }
   }, [isVideoEnabled, isAudioEnabled])
+  
 
   const handleStorageChange = (e: StorageEvent) => {
     if (e.key?.startsWith(`room_${roomId}_participant_`) && e.key !== `room_${roomId}_participant_local`) {
