@@ -263,6 +263,8 @@ export default function HomePage() {
     }
 
     setIsLoading(true)
+
+    console.log("salon desc", newRoom)
     try {
       const createdRoom = await roomApi.create({
         name: newRoom.name,
