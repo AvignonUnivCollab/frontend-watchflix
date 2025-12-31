@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { API_BASE_URL } from "@/lib/config/api"
+import { io, Socket } from "socket.io-client"
+
 import {
   Play,
   Pause,
@@ -37,7 +39,7 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { roomApi } from "@/lib/api/room.api"
 import { videoApi } from "@/lib/api/video.api"
-
+import { authStorage } from "@/lib/storage/auth.storage"
 import type {
   RoomDetail,
   VideoType,
@@ -77,7 +79,7 @@ const availableVideos = [
   },
   {
     id: 4,
-    title: "Blade Runner 2049", 
+    title: "Blade Runner 2049",
     description:
       "Un jeune blade runner découvre un secret enfoui depuis longtemps qui pourrait plonger ce qui reste de la société dans le chaos.",
     thumbnail: "/blade-runner-2049-poster.png",
@@ -152,6 +154,7 @@ export default function RoomPage() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [isBotThinking, setIsBotThinking] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
+  const socketRef = useRef<Socket | null>(null)
 
   const [isCreateVideoOpen, setIsCreateVideoOpen] = useState(false)
   const [newVideo, setNewVideo] = useState({
@@ -169,18 +172,90 @@ export default function RoomPage() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(false)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
+  const [user, setUser] = useState<any | null>(null)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const [peerConnections, setPeerConnections] = useState<Map<string, RTCPeerConnection>>(new Map())
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map())
   const myPeerId = useRef(`peer-${Math.random().toString(36).substr(2, 9)}`)
 
+
+  //recuperer l'utilisateur
   useEffect(() => {
-    const fetchRoom = async () => {
-      const user = JSON.parse(localStorage.getItem("watchflix_user") || "null")
-      if (!user) {
-        router.push("/login")
-        return
+    const storedUser = authStorage.get()
+    setUser(storedUser)
+
+  }, [])
+
+  //connexion a socket IO
+  useEffect(() => {
+    socketRef.current = io("http://localhost:3001", {
+      transports: ["websocket"],
+    })
+
+    socketRef.current.emit("join-room", {
+      roomId,
+    })
+
+    return () => {
+      socketRef.current?.emit("leave-room", { roomId })
+      socketRef.current?.disconnect()
+      socketRef.current = null
+    }
+  }, [roomId])
+
+  // listenner socketIO
+  useEffect(() => {
+    if (!socketRef.current) return
+
+    socketRef.current.on("video-action", (action) => {
+      if (!videoRef.current) return
+
+      switch (action.type) {
+        case "play":
+          videoRef.current.contentWindow?.postMessage(
+            JSON.stringify({ event: "command", func: "playVideo" }),
+            "*"
+          )
+          setIsPlaying(true)
+          break
+
+        case "pause":
+          videoRef.current.contentWindow?.postMessage(
+            JSON.stringify({ event: "command", func: "pauseVideo" }),
+            "*"
+          )
+          setIsPlaying(false)
+          break
+
+        case "seek":
+          videoRef.current.contentWindow?.postMessage(
+            JSON.stringify({
+              event: "command",
+              func: "seekTo",
+              args: [action.time, true],
+            }),
+            "*"
+          )
+          break
       }
+    })
+
+    socketRef.current.on("sync-state", (state) => {
+      setIsPlaying(state.isPlaying)
+    })
+
+    return () => {
+      socketRef.current?.off("video-action")
+      socketRef.current?.off("sync-state")
+    }
+  }, [])
+
+
+
+  useEffect(() => {
+    if (!user) return
+
+    const fetchRoom = async () => {
 
       try {
         setLoading(true)
@@ -189,7 +264,7 @@ export default function RoomPage() {
         setRoom(data)
 
         // Set current video and playlist from API data
-        console.log("fff"+ data.currentVideo)
+        console.log("fff" + data.currentVideo)
         if (data.currentVideo) {
           setCurrentVideo(data.currentVideo)
         } else if (data.videos.length > 0) {
@@ -207,17 +282,16 @@ export default function RoomPage() {
     }
 
     fetchRoom()
-  }, [roomId, router])
+  }, [roomId, router, user])
 
   useEffect(() => {
     const joinRoom = async () => {
-      const user = JSON.parse(localStorage.getItem("watchflix_user") || "null")
       if (!user || !room) return
 
       try {
         await roomApi.join(Number(roomId), user.id)
       } catch (e) {
-        console.error("[v0] Error joining room:", e)
+        console.error("Error joining room:", e)
       }
     }
 
@@ -245,8 +319,22 @@ export default function RoomPage() {
   }
 
   const handleTogglePlay = () => {
+    if (!currentVideo) return
+
+    const action = {
+      type: isPlaying ? "pause" : "play",
+      videoId: currentVideo.id,
+      time: currentTime,
+    }
+
+    socketRef.current?.emit("video-action", {
+      roomId,
+      action,
+    })
+
     setIsPlaying(!isPlaying)
   }
+
 
   const getYoutubeVideoId = (url: string) => {
     const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^?&"'>]+)/)
@@ -291,7 +379,7 @@ export default function RoomPage() {
           }
           setMessages((prev) => [...prev, botMessage])
         } catch (error) {
-          console.error("[v0] Error calling chatbot:", error)
+          console.error("Error calling chatbot:", error)
           const errorMessage: Message = {
             id: messages.length + 2,
             user: "Bot Assistant",
@@ -329,7 +417,6 @@ export default function RoomPage() {
   }
 
   const handleLeaveRoom = async () => {
-    const user = JSON.parse(localStorage.getItem("watchflix_user") || "null")
 
     try {
       if (user) {
@@ -359,49 +446,51 @@ export default function RoomPage() {
       reader.readAsDataURL(file)
     }
   }
-const handleCreateVideo = async () => {
-  if (!newVideo.name || !newVideo.url || !newVideo.description) {
-    alert("Veuillez remplir tous les champs obligatoires")
-    return
+  const handleCreateVideo = async () => {
+    if (!newVideo.name || !newVideo.url || !newVideo.description) {
+      //alert("Veuillez remplir tous les champs obligatoires")
+      return
+    }
+
+    if (!user) {
+      //alert("Vous devez être connecté")
+      return
+    }
+
+    if (room?.videos.some(v => v.title === newVideo.name)) {
+      alert("Une vidéo avec ce titre existe déjà dans ce salon")
+      return
+    }
+
+    try {
+      setIsCreatingVideo(true)
+
+      console.log(user.id)
+      const createdVideo = await videoApi.create({
+        name: newVideo.name,
+        description: newVideo.description,
+        thumbnail: newVideo.thumbnail,
+        url: newVideo.url,
+        roomId: Number(roomId),
+        creatorId: user.id,
+      })
+
+      setRoom(prev =>
+        prev
+          ? { ...prev, videos: [...prev.videos, createdVideo] }
+          : prev
+      )
+
+      setNewVideo({ name: "", description: "", url: "", thumbnail: null })
+      setImagePreview(null)
+      setIsCreateVideoOpen(false)
+
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setIsCreatingVideo(false)
+    }
   }
-
-  const user = JSON.parse(localStorage.getItem("watchflix_user") || "null")
-  if (!user?.id) {
-    alert("Vous devez être connecté")
-    return
-  }
-
-  if (room?.videos.some(v => v.title === newVideo.name)) {
-    alert("Une vidéo avec ce titre existe déjà dans ce salon")
-    return
-  }
-
-  try {
-    setIsCreatingVideo(true)
-
-    const createdVideo = await videoApi.create({
-      name: newVideo.name,
-      url: newVideo.url, 
-      roomId: Number(roomId),
-      userId: user.id,
-    })
-
-    setRoom(prev =>
-      prev
-        ? { ...prev, videos: [...prev.videos, createdVideo] }
-        : prev
-    )
-
-    setNewVideo({ name: "", description: "", url: "", thumbnail: null })
-    setImagePreview(null)
-    setIsCreateVideoOpen(false)
-
-  } catch (e: any) {
-    alert(e.message) 
-  } finally {
-    setIsCreatingVideo(false)
-  }
-}
 
 
   const handleCloseCreateVideo = () => {
@@ -417,7 +506,7 @@ const handleCreateVideo = async () => {
 
     const pc = new RTCPeerConnection(configuration)
 
-  
+
     if (localStream) {
       localStream.getTracks().forEach((track) => {
         pc.addTrack(track, localStream)
@@ -475,9 +564,9 @@ const handleCreateVideo = async () => {
       }
       localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(announcement))
 
-      console.log("[v0] Started local stream, announced presence:", myPeerId.current)
+      console.log("Started local stream, announced presence:", myPeerId.current)
     } catch (error) {
-      console.error("[v0] Error accessing media devices:", error)
+      console.error("Error accessing media devices:", error)
       alert("Impossible d'accéder à la caméra/microphone. Vérifiez les permissions.")
     }
   }
@@ -504,7 +593,7 @@ const handleCreateVideo = async () => {
     }
     localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(announcement))
 
-    console.log("[v0] Stopped local stream and left room")
+    console.log("Stopped local stream and left room")
   }
 
   const createOffer = async (peerId: string) => {
@@ -522,11 +611,11 @@ const handleCreateVideo = async () => {
       roomId: roomId,
     }
     localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(signaling))
-    console.log("[v0] Sent offer to", peerId)
+    console.log("Sent offer to", peerId)
   }
 
   const handleOffer = async (from: string, offer: RTCSessionDescriptionInit) => {
-    console.log("[v0] Received offer from", from)
+    console.log("Received offer from", from)
     const pc = createPeerConnection(from)
     setPeerConnections((prev) => new Map(prev).set(from, pc))
 
@@ -542,11 +631,11 @@ const handleCreateVideo = async () => {
       roomId: roomId,
     }
     localStorage.setItem(`webrtc_signal_${Date.now()}`, JSON.stringify(signaling))
-    console.log("[v0] Sent answer to", from)
+    console.log("Sent answer to", from)
   }
 
   const handleAnswer = async (from: string, answer: RTCSessionDescriptionInit) => {
-    console.log("[v0] Received answer from", from)
+    console.log("Received answer from", from)
     const pc = peerConnections.get(from)
     if (pc) {
       await pc.setRemoteDescription(new RTCSessionDescription(answer))
@@ -554,7 +643,7 @@ const handleCreateVideo = async () => {
   }
 
   const handleIceCandidate = async (from: string, candidate: RTCIceCandidateInit) => {
-    console.log("[v0] Received ICE candidate from", from)
+    console.log("Received ICE candidate from", from)
     const pc = peerConnections.get(from)
     if (pc) {
       await pc.addIceCandidate(new RTCIceCandidate(candidate))
@@ -721,15 +810,15 @@ const handleCreateVideo = async () => {
       </div>
     )
   }
-const getYoutubeThumbnail = (url: string) => {
-  const match = url.match(
-    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([^?&]+)/
-  )
+  const getYoutubeThumbnail = (url: string) => {
+    const match = url.match(
+      /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([^?&]+)/
+    )
 
-  return match
-    ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
-    : "/placeholder.svg"
-}
+    return match
+      ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+      : "/placeholder.svg"
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -776,7 +865,7 @@ const getYoutubeThumbnail = (url: string) => {
                   {isPlaying ? (
                     <iframe
                       ref={videoRef}
-                      src={`https://www.youtube.com/embed/${getYoutubeVideoId(currentVideo.url)}?autoplay=1`}
+                      src={`https://www.youtube.com/embed/${getYoutubeVideoId(currentVideo.url)}?autoplay=1&enablejsapi=1`}
                       className="w-full max-h-[400px] aspect-video rounded-lg"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
@@ -784,8 +873,7 @@ const getYoutubeThumbnail = (url: string) => {
                   ) : (
                     <>
                       <img
-  
-                       src={getYoutubeThumbnail(currentVideo.url)}
+                        src={`${API_BASE_URL}${currentVideo.thumbnail}`}
                         alt={currentVideo.title}
                         className="w-full max-h-[400px] object-cover rounded-lg"
                       />
@@ -857,8 +945,7 @@ const getYoutubeThumbnail = (url: string) => {
                     <div key={video.id} className="space-y-2">
                       <div className="relative cursor-pointer group" onClick={() => handleVideoClick(video)}>
                         <img
-                          src={getYoutubeThumbnail(video.url)}
-
+                          src={`${API_BASE_URL}${video.thumbnail}`}
                           alt={video.title}
                           className="w-full aspect-video object-cover rounded-lg"
                         />
@@ -1013,9 +1100,8 @@ const getYoutubeThumbnail = (url: string) => {
                         onDragStart={() => handleDragStart(index)}
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDragEnd={handleDragEnd}
-                        className={`flex items-center gap-2 p-2 rounded border cursor-move hover:bg-accent ${
-                          draggedIndex === index ? "opacity-50" : ""
-                        }`}
+                        className={`flex items-center gap-2 p-2 rounded border cursor-move hover:bg-accent ${draggedIndex === index ? "opacity-50" : ""
+                          }`}
                       >
                         <GripVertical className="h-4 w-4 text-muted-foreground" />
                         <img
