@@ -40,6 +40,8 @@ import { useParams, useRouter } from "next/navigation"
 import { roomApi } from "@/lib/api/room.api"
 import { videoApi } from "@/lib/api/video.api"
 import { authStorage } from "@/lib/storage/auth.storage"
+import { messageApi } from "@/lib/api/message.api"
+
 import type {
   RoomDetail,
   VideoType,
@@ -329,59 +331,78 @@ export default function RoomPage() {
     return match ? match[1] : null
   }
 
-  const handleSendMessage = async () => {
-    if (newMessage.trim()) {
-      const message: Message = {
-        id: messages.length + 1,
+ const handleSendMessage = async () => {
+  if (!newMessage.trim() || !user) return
+
+  const userMessage = newMessage
+  const mentionsBot =
+    newMessage.toLowerCase().startsWith("@bot") ||
+    newMessage.toLowerCase().includes("chatbot")
+
+  try {
+    // 🔹 1. ENVOI DU MESSAGE AU BACKEND
+    const savedMessage = await messageApi.sendMessage(
+      Number(roomId),
+      user.id,
+      newMessage
+    )
+
+    // 🔹 2. AJOUT AU STATE DEPUIS LA RÉPONSE API
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: savedMessage.id,
         user: "Vous",
-        text: newMessage,
-        timestamp: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-      }
-      setMessages([...messages, message])
+        text: savedMessage.content,
+        timestamp: new Date(savedMessage.timestamp).toLocaleTimeString(
+          "fr-FR",
+          { hour: "2-digit", minute: "2-digit" }
+        ),
+      },
+    ])
 
-      const mentionsBot = newMessage.toLowerCase().startsWith("@bot") || newMessage.toLowerCase().includes("chatbot")
+    setNewMessage("")
 
-      const userMessage = newMessage
-      setNewMessage("")
+    // 🔹 3. BOT (INCHANGÉ)
+    if (mentionsBot) {
+      setIsBotThinking(true)
 
-      if (mentionsBot) {
-        setIsBotThinking(true)
-        try {
-          const response = await fetch("/api/chat-bot", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              message: userMessage.replace("@bot", "").trim(),
-              roomContext: `Salon: ${room?.name}, Vidéo actuelle: ${currentVideo?.title}, ${playlist.length} vidéos dans la playlist`,
-            }),
-          })
+      try {
+        const response = await fetch("/api/chat-bot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: userMessage.replace("@bot", "").trim(),
+            roomContext: `Salon: ${room?.name}, Vidéo actuelle: ${currentVideo?.title}, ${playlist.length} vidéos dans la playlist`,
+          }),
+        })
 
-          const data = await response.json()
+        const data = await response.json()
 
-          const botMessage: Message = {
-            id: messages.length + 2,
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
             user: "Bot Assistant",
             text: data.text,
-            timestamp: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+            timestamp: new Date().toLocaleTimeString("fr-FR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
             isBot: true,
-          }
-          setMessages((prev) => [...prev, botMessage])
-        } catch (error) {
-          console.error("Error calling chatbot:", error)
-          const errorMessage: Message = {
-            id: messages.length + 2,
-            user: "Bot Assistant",
-            text: "Désolé, je ne peux pas répondre pour le moment.",
-            timestamp: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-            isBot: true,
-          }
-          setMessages((prev) => [...prev, errorMessage])
-        } finally {
-          setIsBotThinking(false)
-        }
+          },
+        ])
+      } catch (error) {
+        console.error("Error calling chatbot:", error)
+      } finally {
+        setIsBotThinking(false)
       }
     }
+  } catch (error) {
+    console.error("Erreur envoi message :", error)
   }
+}
+
 
   const handleDragStart = (index: number) => {
     setDraggedIndex(index)
@@ -793,15 +814,18 @@ export default function RoomPage() {
       </div>
     )
   }
-  const getYoutubeThumbnail = (url: string) => {
-    const match = url.match(
-      /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([^?&]+)/
-    )
+  const getYoutubeThumbnail = (url?: string) => {
+  if (!url) return "/placeholder.svg"
 
-    return match
-      ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
-      : "/placeholder.svg"
-  }
+  const match = url.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([^?&]+)/
+  )
+
+  return match
+    ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+    : "/placeholder.svg"
+}
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -1056,7 +1080,8 @@ export default function RoomPage() {
                   <div className="space-y-2">
                     {playlist.map((video, index) => (
                       <div
-                        key={video.id}
+                        key={`${video.id}-${index}`}
+
                         draggable
                         onDragStart={() => handleDragStart(index)}
                         onDragOver={(e) => handleDragOver(e, index)}
