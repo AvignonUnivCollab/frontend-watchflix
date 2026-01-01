@@ -340,12 +340,12 @@ export default function RoomPage() {
     newMessage.toLowerCase().includes("chatbot")
 
   try {
-    // 🔹 1. ENVOI DU MESSAGE AU BACKEND
-    const savedMessage = await messageApi.sendMessage(
-      Number(roomId),
-      user.id,
-      newMessage
-    )
+    const savedMessage = await messageApi.sendMessage({
+  roomId: Number(roomId),
+  userId: user.id,
+  content: newMessage,
+})
+
 
     // 🔹 2. AJOUT AU STATE DEPUIS LA RÉPONSE API
     setMessages((prev) => [

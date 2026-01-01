@@ -1,31 +1,20 @@
 import { API_BASE_URL } from "@/lib/config/api"
 
-export interface MessageApiResponse {
-  id: number
-  userId: number
-  content: string
-  timestamp: string
-}
-
 export const messageApi = {
-  sendMessage: async (
-    roomId: number,
-    userId: number,
+  sendMessage: async (data: {
+    roomId: number
+    userId: number
     content: string
-  ): Promise<MessageApiResponse> => {
-    const res = await fetch(
-      `${API_BASE_URL}/rooms/${roomId}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId,
-          content,
-        }),
-      }
-    )
+  }) => {
+    const params = new URLSearchParams({
+      roomId: data.roomId.toString(),
+      userId: data.userId.toString(),
+      content: data.content,
+    })
+
+    const res = await fetch(`${API_BASE_URL}/messages?${params}`, {
+      method: "POST",
+    })
 
     if (!res.ok) {
       throw new Error(await res.text())
