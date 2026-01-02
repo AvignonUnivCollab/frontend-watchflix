@@ -167,6 +167,15 @@ export default function RoomPage() {
     url: "",
     thumbnail: null as File | null,
   })
+  const [isEditVideoOpen, setIsEditVideoOpen] = useState(false)
+const [videoToEdit, setVideoToEdit] = useState<VideoType | null>(null)
+
+const [editVideo, setEditVideo] = useState({
+  title: "",
+  description: "",
+  url: "",
+})
+
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isCreatingVideo, setIsCreatingVideo] = useState(false)
 
@@ -1020,6 +1029,26 @@ export default function RoomPage() {
                         >
                           <Heart className={`h-4 w-4 ${isInMyPlaylist(video.id) ? "fill-current" : ""}`} />
                         </Button>
+  <Button
+  size="sm"
+  variant="outline"
+  className="absolute bottom-2 left-2 h-8 w-8 p-0"
+  onClick={(e) => {
+    e.stopPropagation()
+    setVideoToEdit(video)
+    setEditVideo({
+      title: video.title,
+      description: video.description,
+      url: video.url,
+    })
+    setIsEditVideoOpen(true)
+  }}
+>
+  ✏️
+</Button>
+
+
+
                       </div>
                       <div>
                         <p className="text-sm font-medium line-clamp-2">{video.title}</p>
@@ -1264,6 +1293,77 @@ export default function RoomPage() {
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog open={isEditVideoOpen} onOpenChange={setIsEditVideoOpen}>
+  <DialogContent className="sm:max-w-[500px]">
+    <DialogHeader>
+      <DialogTitle>Modifier la vidéo</DialogTitle>
+    </DialogHeader>
+
+    <div className="space-y-4">
+      <div>
+        <Label>Titre</Label>
+        <Input
+          value={editVideo.title}
+          onChange={(e) =>
+            setEditVideo({ ...editVideo, title: e.target.value })
+          }
+        />
+      </div>
+
+      <div>
+        <Label>Description</Label>
+        <Textarea
+          value={editVideo.description}
+          onChange={(e) =>
+            setEditVideo({ ...editVideo, description: e.target.value })
+          }
+        />
+      </div>
+
+      <div>
+        <Label>URL</Label>
+        <Input
+          value={editVideo.url}
+          onChange={(e) =>
+            setEditVideo({ ...editVideo, url: e.target.value })
+          }
+        />
+      </div>
+    </div>
+
+    <div className="flex justify-end gap-2 mt-4">
+      <Button variant="outline" onClick={() => setIsEditVideoOpen(false)}>
+        Annuler
+      </Button>
+
+      <Button
+        onClick={async () => {
+          if (!videoToEdit) return
+
+          await videoApi.update(videoToEdit.id, editVideo)
+
+          setRoom((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  videos: prev.videos.map((v) =>
+                    v.id === videoToEdit.id
+                      ? { ...v, ...editVideo }
+                      : v
+                  ),
+                }
+              : prev
+          )
+
+          setIsEditVideoOpen(false)
+        }}
+      >
+        Enregistrer
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
+
     </div>
   )
 }
