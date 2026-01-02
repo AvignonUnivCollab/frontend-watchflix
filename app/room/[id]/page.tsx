@@ -256,12 +256,39 @@ export default function RoomPage() {
       ])
     }
 
+
+    const handlePlaylistUpdate = (payload: any) => {
+      const { action, item, videoId } = payload
+    
+      setPlaylist((prev: any[]) => {
+        if (action === "ADD") {
+          // Sécurité structure
+          if (!item || !item.video) return prev
+    
+          if (prev.some(pv => pv.video.id === item.video.id)) {
+            return prev
+          }
+    
+          return [...prev, item]
+        }
+    
+        if (action === "REMOVE") {
+          return prev.filter(pv => pv.video.id !== videoId)
+        }
+    
+        return prev
+      })
+    }
+    
+
     socket.on("video-action", handleVideoAction)
     socket.on("new-message", handleIncomingMessage)
+    socket.on("playlist-updated", handlePlaylistUpdate)
 
     return () => {
       socket.off("video-action", handleVideoAction)
       socket.off("new-message", handleIncomingMessage)
+      socket.off("playlist-updated", handlePlaylistUpdate)
     }
   }, []) // TOUJOURS un tableau vide
 
@@ -317,15 +344,17 @@ export default function RoomPage() {
   const isInPlaylist = (videoId: number) => {
     return playlist.some((v) => v.id === videoId)
   }
+
   const isInMyPlaylist = (videoId: number) => {
     if (!user) return false
 
     return playlist.some(
       (pv: any) =>
         pv.video?.id === videoId &&
-        pv.user?.id === user.id
+        pv.addedBy?.id === user.id
     )
   }
+
 
 
   const toggleVideoInPlaylist = (video: VideoType) => {
@@ -335,30 +364,46 @@ export default function RoomPage() {
       setPlaylist([...playlist, video])
     }
   }
-  const handleAddVideoToPlaylist = async (video: VideoType) => {
-    if (!user) return
-    if (isInMyPlaylist(video.id)) return
 
-    // 🔥 AJOUT LOCAL IMMÉDIAT
-    setPlaylist((prev: any[]) => [
-      ...prev,
-      {
-        id: `temp-${video.id}-${user.id}`,
-        video,
-        user,
-      },
-    ])
+
+  const handleAddVideoToPlaylist = async (video: VideoType) => {
+    if (!user || !socketRef.current) return
 
     try {
-      await playlistApi.addVideoToPlaylist(
-        Number(roomId),
-        video.id,
-        user.id
-      )
+      if (isInMyPlaylist(video.id)) {
+        //RETIRER
+        await playlistApi.removeVideoFromPlaylist(
+          Number(roomId),
+          video.id
+        )
+
+        socketRef.current.emit("playlist-remove", {
+          roomId,
+          videoId: video.id,
+        })
+
+        setPlaylist((prev) =>
+          prev.filter((pv: any) => pv.video.id !== video.id)
+        )
+      } else {
+        //AJOUTER
+        const newItem = await playlistApi.addVideoToPlaylist(
+          Number(roomId),
+          video.id,
+          user.id
+        )
+
+        socketRef.current.emit("playlist-add", {
+          roomId,
+          item: newItem,
+        })
+        //setPlaylist((prev) => [...prev, newItem])
+      }
     } catch (error) {
-      console.error("Erreur ajout playlist :", error)
+      console.error("Erreur playlist :", error)
     }
   }
+
 
 
   const handleVideoClick = (video: VideoType) => {
@@ -967,12 +1012,10 @@ export default function RoomPage() {
                         <Button
                           size="sm"
                           variant={isInMyPlaylist(video.id) ? "default" : "secondary"}
-
                           className="absolute top-2 right-2 h-8 w-8 p-0"
                           onClick={(e) => {
                             e.stopPropagation()
                             handleAddVideoToPlaylist(video)
-
                           }}
                         >
                           <Heart className={`h-4 w-4 ${isInMyPlaylist(video.id) ? "fill-current" : ""}`} />
@@ -1109,7 +1152,7 @@ export default function RoomPage() {
                   <div className="space-y-2">
                     {playlist.map((pv: any, index) => {
                       const video = pv.video
-
+                      if(!video) return
                       return (
                         <div
                           key={`${pv.id}-${index}`}
@@ -1122,7 +1165,7 @@ export default function RoomPage() {
                         >
                           <GripVertical className="h-4 w-4 text-muted-foreground" />
                           <img
-                            src={getYoutubeThumbnail(video.url)}
+                            src={`${API_BASE_URL}${video.thumbnail}`}
                             alt={video.title}
                             className="w-12 h-12 object-cover rounded"
                           />
