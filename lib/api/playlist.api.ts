@@ -29,6 +29,22 @@ export const playlistApi = {
     }
 
     const playlist = await res.json()
-    return playlist.videos ?? playlist
+    return playlist.video ?? playlist
   },
+
+
+    // REMOVE
+    removeVideoFromPlaylist: async (
+      roomId: number,
+      videoId: number
+    ) => {
+      const res = await fetch(
+        `${API_BASE_URL}/rooms/${roomId}/playlist/remove-video/${videoId}`,
+        {
+          method: "DELETE",
+        }
+      )
+  
+      if (!res.ok) throw new Error(await res.text())
+    },
 }
