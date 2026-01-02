@@ -40,7 +40,7 @@ import { useParams, useRouter } from "next/navigation"
 import { roomApi } from "@/lib/api/room.api"
 import { videoApi } from "@/lib/api/video.api"
 import { authStorage } from "@/lib/storage/auth.storage"
-import { messageApi } from "@/lib/api/message.api"
+import { playlistApi } from "@/lib/api/playlist.api"
 
 import type {
   RoomDetail,
@@ -297,6 +297,16 @@ export default function RoomPage() {
   const isInPlaylist = (videoId: number) => {
     return playlist.some((v) => v.id === videoId)
   }
+const isInMyPlaylist = (videoId: number) => {
+  if (!user) return false
+
+  return playlist.some(
+    (pv: any) =>
+      pv.video?.id === videoId &&
+      pv.user?.id === user.id
+  )
+}
+
 
   const toggleVideoInPlaylist = (video: VideoType) => {
     if (isInPlaylist(video.id)) {
@@ -305,6 +315,31 @@ export default function RoomPage() {
       setPlaylist([...playlist, video])
     }
   }
+  const handleAddVideoToPlaylist = async (video: VideoType) => {
+  if (!user) return
+  if (isInMyPlaylist(video.id)) return
+
+  // 🔥 AJOUT LOCAL IMMÉDIAT
+  setPlaylist((prev: any[]) => [
+    ...prev,
+    {
+      id: `temp-${video.id}-${user.id}`,
+      video,
+      user,
+    },
+  ])
+
+  try {
+    await playlistApi.addVideoToPlaylist(
+      Number(roomId),
+      video.id,
+      user.id
+    )
+  } catch (error) {
+    console.error("Erreur ajout playlist :", error)
+  }
+}
+
 
   const handleVideoClick = (video: VideoType) => {
     setCurrentVideo(video)
@@ -814,7 +849,7 @@ export default function RoomPage() {
       </div>
     )
   }
-  const getYoutubeThumbnail = (url?: string) => {
+ const getYoutubeThumbnail = (url?: string) => {
   if (!url) return "/placeholder.svg"
 
   const match = url.match(
@@ -939,14 +974,16 @@ export default function RoomPage() {
                         </div>
                         <Button
                           size="sm"
-                          variant={isInPlaylist(video.id) ? "default" : "secondary"}
+                          variant={isInMyPlaylist(video.id) ? "default" : "secondary"}
+
                           className="absolute top-2 right-2 h-8 w-8 p-0"
                           onClick={(e) => {
                             e.stopPropagation()
-                            toggleVideoInPlaylist(video)
+                              handleAddVideoToPlaylist(video)
+
                           }}
                         >
-                          <Heart className={`h-4 w-4 ${isInPlaylist(video.id) ? "fill-current" : ""}`} />
+<Heart className={`h-4 w-4 ${isInMyPlaylist(video.id) ? "fill-current" : ""}`} />
                         </Button>
                       </div>
                       <div>
@@ -1078,31 +1115,33 @@ export default function RoomPage() {
               ) : (
                 <ScrollArea className="h-[300px]">
                   <div className="space-y-2">
-                    {playlist.map((video, index) => (
-                      <div
-                        key={`${video.id}-${index}`}
+                    {playlist.map((pv: any, index) => {
+  const video = pv.video
 
-                        draggable
-                        onDragStart={() => handleDragStart(index)}
-                        onDragOver={(e) => handleDragOver(e, index)}
-                        onDragEnd={handleDragEnd}
-                        className={`flex items-center gap-2 p-2 rounded border cursor-move hover:bg-accent ${draggedIndex === index ? "opacity-50" : ""
-                          }`}
-                      >
-                        <GripVertical className="h-4 w-4 text-muted-foreground" />
-                        <img
-                          src={getYoutubeThumbnail(video.url)}
+  return (
+    <div
+      key={`${pv.id}-${index}`}
 
-                          alt={video.title}
-                          className="w-12 h-12 object-cover rounded"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{video.title}</p>
-                          <p className="text-xs text-muted-foreground">{video.duration}</p>
-                        </div>
-                        <span className="text-xs text-muted-foreground">#{index + 1}</span>
-                      </div>
-                    ))}
+      draggable
+      onDragStart={() => handleDragStart(index)}
+      onDragOver={(e) => handleDragOver(e, index)}
+      onDragEnd={handleDragEnd}
+      className="flex items-center gap-2 p-2 rounded border cursor-move hover:bg-accent"
+    >
+      <GripVertical className="h-4 w-4 text-muted-foreground" />
+      <img
+        src={getYoutubeThumbnail(video.url)}
+        alt={video.title}
+        className="w-12 h-12 object-cover rounded"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{video.title}</p>
+      </div>
+      <span className="text-xs text-muted-foreground">#{index + 1}</span>
+    </div>
+  )
+})}
+
                   </div>
                 </ScrollArea>
               )}
