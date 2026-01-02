@@ -366,59 +366,78 @@ const isInMyPlaylist = (videoId: number) => {
     return match ? match[1] : null
   }
 
-  const handleSendMessage = async () => {
-    if (newMessage.trim()) {
-      const message: Message = {
-        id: messages.length + 1,
+ const handleSendMessage = async () => {
+  if (!newMessage.trim() || !user) return
+
+  const userMessage = newMessage
+  const mentionsBot =
+    newMessage.toLowerCase().startsWith("@bot") ||
+    newMessage.toLowerCase().includes("chatbot")
+
+  try {
+    const savedMessage = await messageApi.sendMessage({
+  roomId: Number(roomId),
+  userId: user.id,
+  content: newMessage,
+})
+
+
+    // 🔹 2. AJOUT AU STATE DEPUIS LA RÉPONSE API
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: savedMessage.id,
         user: "Vous",
-        text: newMessage,
-        timestamp: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-      }
-      setMessages([...messages, message])
+        text: savedMessage.content,
+        timestamp: new Date(savedMessage.timestamp).toLocaleTimeString(
+          "fr-FR",
+          { hour: "2-digit", minute: "2-digit" }
+        ),
+      },
+    ])
 
-      const mentionsBot = newMessage.toLowerCase().startsWith("@bot") || newMessage.toLowerCase().includes("chatbot")
+    setNewMessage("")
 
-      const userMessage = newMessage
-      setNewMessage("")
+    // 🔹 3. BOT (INCHANGÉ)
+    if (mentionsBot) {
+      setIsBotThinking(true)
 
-      if (mentionsBot) {
-        setIsBotThinking(true)
-        try {
-          const response = await fetch("/api/chat-bot", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              message: userMessage.replace("@bot", "").trim(),
-              roomContext: `Salon: ${room?.name}, Vidéo actuelle: ${currentVideo?.title}, ${playlist.length} vidéos dans la playlist`,
-            }),
-          })
+      try {
+        const response = await fetch("/api/chat-bot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: userMessage.replace("@bot", "").trim(),
+            roomContext: `Salon: ${room?.name}, Vidéo actuelle: ${currentVideo?.title}, ${playlist.length} vidéos dans la playlist`,
+          }),
+        })
 
-          const data = await response.json()
+        const data = await response.json()
 
-          const botMessage: Message = {
-            id: messages.length + 2,
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
             user: "Bot Assistant",
             text: data.text,
-            timestamp: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+            timestamp: new Date().toLocaleTimeString("fr-FR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
             isBot: true,
-          }
-          setMessages((prev) => [...prev, botMessage])
-        } catch (error) {
-          console.error("Error calling chatbot:", error)
-          const errorMessage: Message = {
-            id: messages.length + 2,
-            user: "Bot Assistant",
-            text: "Désolé, je ne peux pas répondre pour le moment.",
-            timestamp: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-            isBot: true,
-          }
-          setMessages((prev) => [...prev, errorMessage])
-        } finally {
-          setIsBotThinking(false)
-        }
+          },
+        ])
+      } catch (error) {
+        console.error("Error calling chatbot:", error)
+      } finally {
+        setIsBotThinking(false)
       }
     }
+  } catch (error) {
+    console.error("Erreur envoi message :", error)
   }
+}
+
 
   const handleDragStart = (index: number) => {
     setDraggedIndex(index)
