@@ -6,14 +6,16 @@ export const messageApi = {
     userId: number
     content: string
   }) => {
-    const params = new URLSearchParams({
-      roomId: data.roomId.toString(),
-      userId: data.userId.toString(),
-      content: data.content,
-    })
-
-    const res = await fetch(`${API_BASE_URL}/messages?${params}`, {
+    const res = await fetch(`${API_BASE_URL}/messages`, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        roomId: data.roomId,
+        userId: data.userId,
+        content: data.content,
+      }),
     })
 
     if (!res.ok) {

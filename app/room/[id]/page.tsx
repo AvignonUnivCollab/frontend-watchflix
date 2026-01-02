@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { API_BASE_URL } from "@/lib/config/api"
+import { timeAgo } from "@/lib/utils/time"
 import { io, Socket } from "socket.io-client"
 
 import {
@@ -41,6 +42,7 @@ import { roomApi } from "@/lib/api/room.api"
 import { videoApi } from "@/lib/api/video.api"
 import { authStorage } from "@/lib/storage/auth.storage"
 import { playlistApi } from "@/lib/api/playlist.api"
+import { messageApi } from "@/lib/api/message.api"
 
 import type {
   RoomDetail,
@@ -120,7 +122,7 @@ const availableVideos = [
 interface Message {
   id: number
   user: string
-  text: string
+  content: string
   timestamp: string
   isBot?: boolean
 }
@@ -208,13 +210,13 @@ export default function RoomPage() {
   // listenner socketIO
   useEffect(() => {
     if (!socketRef.current) return
-  
+
     const socket = socketRef.current
-  
+
     const handleVideoAction = (action: any) => {
       const iframe = videoRef.current?.contentWindow
       if (!iframe) return
-  
+
       switch (action.type) {
         case "play":
           iframe.postMessage(
@@ -223,7 +225,7 @@ export default function RoomPage() {
           )
           setIsPlaying(true)
           break
-  
+
         case "pause":
           iframe.postMessage(
             JSON.stringify({ event: "command", func: "pauseVideo" }),
@@ -233,17 +235,35 @@ export default function RoomPage() {
           break
       }
     }
-  
+
+    const handleIncomingMessage = (payload: any) => {
+      const { message, sender } = payload
+
+      // Ne pas dupliquer son propre message
+      if (sender.id === user?.id) return
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: message.id,
+          user: sender.name,
+          content: message.content,
+          timestamp: new Date(message.timestamp).toLocaleTimeString(
+            "fr-FR",
+            { hour: "2-digit", minute: "2-digit" }
+          ),
+        },
+      ])
+    }
+
     socket.on("video-action", handleVideoAction)
-  
+    socket.on("new-message", handleIncomingMessage)
+
     return () => {
       socket.off("video-action", handleVideoAction)
+      socket.off("new-message", handleIncomingMessage)
     }
-  }, []) // ✅ TOUJOURS un tableau vide
-  
-  
-  
-
+  }, []) // TOUJOURS un tableau vide
 
 
   useEffect(() => {
@@ -297,15 +317,15 @@ export default function RoomPage() {
   const isInPlaylist = (videoId: number) => {
     return playlist.some((v) => v.id === videoId)
   }
-const isInMyPlaylist = (videoId: number) => {
-  if (!user) return false
+  const isInMyPlaylist = (videoId: number) => {
+    if (!user) return false
 
-  return playlist.some(
-    (pv: any) =>
-      pv.video?.id === videoId &&
-      pv.user?.id === user.id
-  )
-}
+    return playlist.some(
+      (pv: any) =>
+        pv.video?.id === videoId &&
+        pv.user?.id === user.id
+    )
+  }
 
 
   const toggleVideoInPlaylist = (video: VideoType) => {
@@ -316,29 +336,29 @@ const isInMyPlaylist = (videoId: number) => {
     }
   }
   const handleAddVideoToPlaylist = async (video: VideoType) => {
-  if (!user) return
-  if (isInMyPlaylist(video.id)) return
+    if (!user) return
+    if (isInMyPlaylist(video.id)) return
 
-  // 🔥 AJOUT LOCAL IMMÉDIAT
-  setPlaylist((prev: any[]) => [
-    ...prev,
-    {
-      id: `temp-${video.id}-${user.id}`,
-      video,
-      user,
-    },
-  ])
+    // 🔥 AJOUT LOCAL IMMÉDIAT
+    setPlaylist((prev: any[]) => [
+      ...prev,
+      {
+        id: `temp-${video.id}-${user.id}`,
+        video,
+        user,
+      },
+    ])
 
-  try {
-    await playlistApi.addVideoToPlaylist(
-      Number(roomId),
-      video.id,
-      user.id
-    )
-  } catch (error) {
-    console.error("Erreur ajout playlist :", error)
+    try {
+      await playlistApi.addVideoToPlaylist(
+        Number(roomId),
+        video.id,
+        user.id
+      )
+    } catch (error) {
+      console.error("Erreur ajout playlist :", error)
+    }
   }
-}
 
 
   const handleVideoClick = (video: VideoType) => {
@@ -349,7 +369,7 @@ const isInMyPlaylist = (videoId: number) => {
 
   const handleTogglePlay = () => {
     if (!currentVideo) return
-  
+
     socketRef.current?.emit("video-action", {
       roomId,
       action: {
@@ -358,7 +378,7 @@ const isInMyPlaylist = (videoId: number) => {
       },
     })
   }
-  
+
 
 
   const getYoutubeVideoId = (url: string) => {
@@ -366,77 +386,49 @@ const isInMyPlaylist = (videoId: number) => {
     return match ? match[1] : null
   }
 
- const handleSendMessage = async () => {
-  if (!newMessage.trim() || !user) return
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !user) return
 
-  const userMessage = newMessage
-  const mentionsBot =
-    newMessage.toLowerCase().startsWith("@bot") ||
-    newMessage.toLowerCase().includes("chatbot")
-
-  try {
-    const savedMessage = await messageApi.sendMessage({
-  roomId: Number(roomId),
-  userId: user.id,
-  content: newMessage,
-})
-
-
-    // 🔹 2. AJOUT AU STATE DEPUIS LA RÉPONSE API
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: savedMessage.id,
-        user: "Vous",
-        text: savedMessage.content,
-        timestamp: new Date(savedMessage.timestamp).toLocaleTimeString(
-          "fr-FR",
-          { hour: "2-digit", minute: "2-digit" }
-        ),
-      },
-    ])
-
+    const content = newMessage
     setNewMessage("")
 
-    // 🔹 3. BOT (INCHANGÉ)
-    if (mentionsBot) {
-      setIsBotThinking(true)
+    try {
+      // Sauvegarde en base
+      const savedMessage = await messageApi.sendMessage({
+        roomId: Number(roomId),
+        userId: user.id,
+        content,
+      })
 
-      try {
-        const response = await fetch("/api/chat-bot", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: userMessage.replace("@bot", "").trim(),
-            roomContext: `Salon: ${room?.name}, Vidéo actuelle: ${currentVideo?.title}, ${playlist.length} vidéos dans la playlist`,
-          }),
-        })
-
-        const data = await response.json()
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            user: "Bot Assistant",
-            text: data.text,
-            timestamp: new Date().toLocaleTimeString("fr-FR", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            isBot: true,
-          },
-        ])
-      } catch (error) {
-        console.error("Error calling chatbot:", error)
-      } finally {
-        setIsBotThinking(false)
+      if (!savedMessage) {
+        throw new Error("Impossible d'envoyer le message")
       }
+
+      // Émission temps réel
+      socketRef.current?.emit("new-message", {
+        roomId,
+        message: savedMessage,
+        sender: {
+          id: user.id,
+          name: savedMessage.user,
+        },
+      })
+
+      //  Ajout local immédiat
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: savedMessage.id,
+          user: savedMessage.user,
+          content: savedMessage.content,
+          timestamp: savedMessage.timestamp,
+        },
+      ])
+    } catch (error) {
+      console.error("Erreur envoi message :", error)
     }
-  } catch (error) {
-    console.error("Erreur envoi message :", error)
   }
-}
+
 
 
   const handleDragStart = (index: number) => {
@@ -593,25 +585,25 @@ const isInMyPlaylist = (videoId: number) => {
       console.warn("No media requested, skipping getUserMedia")
       return
     }
-  
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: isVideoEnabled,
         audio: isAudioEnabled,
       })
-  
+
       setLocalStream(stream)
-  
+
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
       }
-  
+
     } catch (error) {
       console.error("Error accessing media devices:", error)
       alert("Impossible d'accéder à la caméra/microphone.")
     }
   }
-  
+
 
   const stopLocalStream = () => {
     // Close all peer connections
@@ -779,7 +771,7 @@ const isInMyPlaylist = (videoId: number) => {
       stopLocalStream()
     }
   }, [isVideoEnabled, isAudioEnabled])
-  
+
 
   const handleStorageChange = (e: StorageEvent) => {
     if (e.key?.startsWith(`room_${roomId}_participant_`) && e.key !== `room_${roomId}_participant_local`) {
@@ -849,17 +841,17 @@ const isInMyPlaylist = (videoId: number) => {
       </div>
     )
   }
- const getYoutubeThumbnail = (url?: string) => {
-  if (!url) return "/placeholder.svg"
+  const getYoutubeThumbnail = (url?: string) => {
+    if (!url) return "/placeholder.svg"
 
-  const match = url.match(
-    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([^?&]+)/
-  )
+    const match = url.match(
+      /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([^?&]+)/
+    )
 
-  return match
-    ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
-    : "/placeholder.svg"
-}
+    return match
+      ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+      : "/placeholder.svg"
+  }
 
 
   return (
@@ -979,11 +971,11 @@ const isInMyPlaylist = (videoId: number) => {
                           className="absolute top-2 right-2 h-8 w-8 p-0"
                           onClick={(e) => {
                             e.stopPropagation()
-                              handleAddVideoToPlaylist(video)
+                            handleAddVideoToPlaylist(video)
 
                           }}
                         >
-<Heart className={`h-4 w-4 ${isInMyPlaylist(video.id) ? "fill-current" : ""}`} />
+                          <Heart className={`h-4 w-4 ${isInMyPlaylist(video.id) ? "fill-current" : ""}`} />
                         </Button>
                       </div>
                       <div>
@@ -1068,9 +1060,9 @@ const isInMyPlaylist = (videoId: number) => {
                             {message.isBot && <Bot className="h-3 w-3" />}
                             {message.user}
                           </span>
-                          <span className="text-xs text-muted-foreground">{message.timestamp}</span>
+                          <span className="text-xs text-muted-foreground">{timeAgo(message.timestamp)}</span>
                         </div>
-                        <p className={`text-sm ${message.isBot ? "bg-muted p-2 rounded" : ""}`}>{message.text}</p>
+                        <p className={`text-sm ${message.isBot ? "bg-muted p-2 rounded" : ""}`}>{message.content}</p>
                       </div>
                     ))}
                     {isBotThinking && (
@@ -1116,31 +1108,31 @@ const isInMyPlaylist = (videoId: number) => {
                 <ScrollArea className="h-[300px]">
                   <div className="space-y-2">
                     {playlist.map((pv: any, index) => {
-  const video = pv.video
+                      const video = pv.video
 
-  return (
-    <div
-      key={`${pv.id}-${index}`}
+                      return (
+                        <div
+                          key={`${pv.id}-${index}`}
 
-      draggable
-      onDragStart={() => handleDragStart(index)}
-      onDragOver={(e) => handleDragOver(e, index)}
-      onDragEnd={handleDragEnd}
-      className="flex items-center gap-2 p-2 rounded border cursor-move hover:bg-accent"
-    >
-      <GripVertical className="h-4 w-4 text-muted-foreground" />
-      <img
-        src={getYoutubeThumbnail(video.url)}
-        alt={video.title}
-        className="w-12 h-12 object-cover rounded"
-      />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{video.title}</p>
-      </div>
-      <span className="text-xs text-muted-foreground">#{index + 1}</span>
-    </div>
-  )
-})}
+                          draggable
+                          onDragStart={() => handleDragStart(index)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragEnd={handleDragEnd}
+                          className="flex items-center gap-2 p-2 rounded border cursor-move hover:bg-accent"
+                        >
+                          <GripVertical className="h-4 w-4 text-muted-foreground" />
+                          <img
+                            src={getYoutubeThumbnail(video.url)}
+                            alt={video.title}
+                            className="w-12 h-12 object-cover rounded"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{video.title}</p>
+                          </div>
+                          <span className="text-xs text-muted-foreground">#{index + 1}</span>
+                        </div>
+                      )
+                    })}
 
                   </div>
                 </ScrollArea>
