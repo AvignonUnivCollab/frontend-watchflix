@@ -625,29 +625,48 @@ export default function RoomPage() {
     return pc
   }
 
-  const startLocalStream = async () => {
-    if (!isVideoEnabled && !isAudioEnabled) {
-      console.warn("No media requested, skipping getUserMedia")
+
+  const hasDevices = async () => {
+  const devices = await navigator.mediaDevices.enumerateDevices()
+  return {
+    video: devices.some(d => d.kind === "videoinput"),
+    audio: devices.some(d => d.kind === "audioinput"),
+  }
+}
+
+  
+const startLocalStream = async () => {
+  try {
+    const devices = await hasDevices()
+
+    if (isVideoEnabled && !devices.video) {
+      alert("Aucune caméra détectée")
+      setIsVideoEnabled(false)
       return
     }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: isVideoEnabled,
-        audio: isAudioEnabled,
-      })
-
-      setLocalStream(stream)
-
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream
-      }
-
-    } catch (error) {
-      console.error("Error accessing media devices:", error)
-      alert("Impossible d'accéder à la caméra/microphone.")
+    if (isAudioEnabled && !devices.audio) {
+      alert("Aucun microphone détecté")
+      setIsAudioEnabled(false)
+      return
     }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: isVideoEnabled,
+      audio: isAudioEnabled,
+    })
+
+    setLocalStream(stream)
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream
+    }
+  } catch (err) {
+    console.error(err)
+    alert("Erreur accès caméra / micro")
   }
+}
+
 
 
   const stopLocalStream = () => {
